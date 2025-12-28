@@ -15,6 +15,7 @@ typedef struct {
     int regs[REG_COUNT];
     uint64_t *code;
     int ip;
+    int execution_times;
     int code_size;
     unsigned int flags;
 
@@ -40,7 +41,7 @@ void vm_run(VM *vm) {
         uint8_t op, rd, rs1, rs2;
         int32_t imm;
         FETCH64(vm, op, rd, rs1, rs2, imm);
-
+        vm->execution_times++;
         switch (op) {
             case OP_LOADI: {
                 vm->regs[rd] = imm;
@@ -123,7 +124,11 @@ void vm_run(VM *vm) {
                 set_zf(vm, val1 - val2);
                 break;
             }
-
+            case OP_MOV: {
+                vm->regs[rd] = vm->regs[rs1];
+                set_zf(vm, vm->regs[rd]);
+                break;
+            }
             default: {
                 printf("Unknown opcode %d\n", op);
                 return;
@@ -202,7 +207,7 @@ int main() {
     vm.flags = 0;
     vm.dsp = DATA_STACK_SIZE;
     vm.csp = CALL_STACK_SIZE;
-
+    vm.execution_times = 0;
     printf(
         "Loaded VM. \n code length: %d\n Call Stack size: %d\n Data Stack size: %d \n Memory Size: %d\n Memory Head: %p\n",
         vm.code_size,
@@ -213,6 +218,7 @@ int main() {
     }
 
     vm_run(&vm);
-    vm_dump(&vm, 0);
+    vm_dump(&vm, 16);
+    printf("Execution complete in %d cycles.\n", vm.execution_times);
     return 0;
 }
