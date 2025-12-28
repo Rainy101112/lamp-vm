@@ -129,6 +129,11 @@ void vm_run(VM *vm) {
                 set_zf(vm, vm->regs[rd]);
                 break;
             }
+            case OP_MOVI: {
+                vm->regs[rd]= imm;
+                set_zf(vm, vm->regs[rd]);
+                break;
+            }
             default: {
                 printf("Unknown opcode %d\n", op);
                 return;

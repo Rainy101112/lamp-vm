@@ -36,6 +36,7 @@ enum {
     OP_LOAD_IND,
     OP_STORE_IND,
     OP_CMP,
-    OP_MOV
+    OP_MOV,
+    OP_MOVI
 };
 #endif

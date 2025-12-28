@@ -13,6 +13,8 @@
 | JMP / JZ   | /           | /                | /       | Jump Instruction Id |
 | PUSH / POP | register    | /                | /       | /                   |
 | CMP        | register    | register         | /       | Immediate Value     |
+| MOV        | register    | register         | /       | /                   |
+| MOVI       | register    | /                | /       | Immediate Value     |
 
 ### Instructions Usage:
 
@@ -32,4 +34,7 @@ PUSH: Push a register into stack.
 
 POP: Pop a value out of the stack.
 
-CMP: Compare two values and set ZFLAGS. If imm is 0, compare rd and rs1, or compare rd and imm. If they are equal, ZFLAG will be 0, otherwise it will be 1.
+CMP: Compare two values and set ZFLAGS. If imm is 0, compare rd and rs1, or compare rd and imm. If they are equal, ZFLAG
+will be 0, otherwise it will be 1.
+
+MOV/MOVI: Move rs1's value or a immediate value to rd.
