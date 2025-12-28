@@ -5,4 +5,7 @@ set(CMAKE_C_STANDARD 11)
 
 add_executable(vm
         register_vm.c
-        vm.h)
+        vm.h
+        stack.h
+        fetch.h
+        instruction.h)

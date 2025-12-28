@@ -1,21 +1,28 @@
+#include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h>
-#include "vm.h"
 
+#include "fetch.h"
+#include "vm.h"
+#include "stack.h"
+#include "instruction.h"
 #define REG_COUNT 8
 #define MEM_SIZE 1024
-#define STACK_SIZE 256
+#define DATA_STACK_SIZE 256
+#define CALL_STACK_SIZE 256
 #define FLAG_ZF 1
 
 typedef struct {
     int regs[REG_COUNT];
-    unsigned char *code;
+    uint64_t *code;
     int ip;
     int code_size;
     unsigned int flags;
 
-    int stack[STACK_SIZE];
-    int sp;
+    int data_stack[DATA_STACK_SIZE];
+    int dsp;
+
+    int call_stack[CALL_STACK_SIZE];
+    int csp;
 
     int memory[MEM_SIZE];
 } VM;
@@ -30,110 +37,95 @@ void set_zf(VM *vm, int value) {
 
 void vm_run(VM *vm) {
     while (vm->ip < vm->code_size) {
-        unsigned char opcode = vm->code[vm->ip++];
+        uint8_t op, rd, rs1, rs2;
+        int32_t imm;
+        FETCH64(vm, op, rd, rs1, rs2, imm);
 
-        switch (opcode) {
+        switch (op) {
             case OP_LOADI: {
-                unsigned char r = NEXT_INSTRUCTION;
-                int imm = NEXT_INSTRUCTION;
-                vm->regs[r] = imm;
-                set_zf(vm, vm->regs[r]);
+                vm->regs[rd] = imm;
+                set_zf(vm, imm);
                 break;
             }
 
             case OP_ADD: {
-                unsigned char rd = NEXT_INSTRUCTION;
-                unsigned char r1 = NEXT_INSTRUCTION;
-                unsigned char r2 = NEXT_INSTRUCTION;
-                vm->regs[rd] = vm->regs[r1] + vm->regs[r2];
+                vm->regs[rd] = vm->regs[rs1] + vm->regs[rs2];
                 set_zf(vm, vm->regs[rd]);
                 break;
             }
 
             case OP_SUB: {
-                unsigned char rd = NEXT_INSTRUCTION;
-                unsigned char r1 = NEXT_INSTRUCTION;
-                unsigned char r2 = NEXT_INSTRUCTION;
-                vm->regs[rd] = vm->regs[r1] - vm->regs[r2];
+                vm->regs[rd] = vm->regs[rs1] - vm->regs[rs2];
                 set_zf(vm, vm->regs[rd]);
                 break;
             }
             case OP_MUL: {
-                unsigned char rd = NEXT_INSTRUCTION;
-                unsigned char r1 = NEXT_INSTRUCTION;
-                unsigned char r2 = NEXT_INSTRUCTION;
-                vm->regs[rd] = vm->regs[r1] * vm->regs[r2];
+                vm->regs[rd] = vm->regs[rs1] * vm->regs[rs2];
                 set_zf(vm, vm->regs[rd]);
                 break;
             }
             case OP_PRINT: {
-                unsigned char r = NEXT_INSTRUCTION;
-                printf("%d\n", vm->regs[r]);
+                printf("%d\n", vm->regs[rd]);
                 break;
             }
             case OP_HALT: {
                 return;
             }
             case OP_JMP: {
-                int addr = NEXT_INSTRUCTION;
-                vm->ip = addr;
+                vm->ip = imm;
                 break;
             }
             case OP_JZ: {
-                int addr = NEXT_INSTRUCTION;
                 if (vm->flags & FLAG_ZF) {
-                    vm->ip = addr;
+                    vm->ip = imm;
                 }
                 break;
             }
             case OP_PUSH: {
-                unsigned char r = NEXT_INSTRUCTION;
-                vm->stack[--vm->sp] = vm->regs[r];
+                DATA_PUSH(vm, vm->regs[rd]);
                 break;
             }
             case OP_POP: {
-                unsigned char r = NEXT_INSTRUCTION;
-                vm->regs[r] = vm->stack[vm->sp++];
+                vm->regs[rd] = DATA_POP(vm);
+                set_zf(vm, vm->regs[rd]);
                 break;
             }
             case OP_CALL: {
-                int addr = NEXT_INSTRUCTION;
-                vm->stack[--vm->sp] = vm->ip;
-                vm->ip = addr;
+                CALL_PUSH(vm, vm->ip);
+                vm->ip = imm;
                 break;
             }
             case OP_RET: {
-                vm->ip = vm->stack[vm->sp++];
+                vm->ip = CALL_POP(vm);
                 break;
             }
             case OP_LOAD: {
-                unsigned char r = NEXT_INSTRUCTION;
-                unsigned char addr = NEXT_INSTRUCTION;
-                vm->regs[r] = vm->memory[addr];
-                set_zf(vm, vm->regs[r]);
+                vm->regs[rd] = vm->memory[rs1];
+                set_zf(vm, vm->regs[rd]);
                 break;
             }
             case OP_STORE: {
-                unsigned char r = NEXT_INSTRUCTION;
-                unsigned char addr = NEXT_INSTRUCTION;
-                vm->memory[addr] = vm->regs[r];
+                vm->memory[rs1] = vm->regs[rd];
                 break;
             }
             case OP_LOAD_IND: {
-                unsigned char r_dest = NEXT_INSTRUCTION;
-                unsigned char r_addr = NEXT_INSTRUCTION;
-                vm->regs[r_dest] = vm->memory[vm->regs[r_addr]];
-                set_zf(vm, vm->regs[r_dest]);
+                vm->regs[rd] = vm->memory[vm->regs[rs1]];
+                set_zf(vm, vm->regs[rd]);
                 break;
             }
             case OP_STORE_IND: {
-                unsigned char r_src = NEXT_INSTRUCTION;
-                unsigned char r_addr = NEXT_INSTRUCTION;
-                vm->memory[vm->regs[r_addr]] = vm->regs[r_src];
+                vm->memory[vm->regs[rs1]] = vm->regs[rd];
                 break;
             }
+            case OP_CMP: {
+                int val1 = vm->regs[rd];
+                int val2 = (imm != 0) ? imm : vm->regs[rs1];
+                set_zf(vm, val1 - val2);
+                break;
+            }
+
             default: {
-                printf("Unknown opcode %d\n", opcode);
+                printf("Unknown opcode %d\n", op);
                 return;
             }
         }
@@ -147,11 +139,18 @@ void vm_dump(VM *vm, int mem_preview) {
         printf("r%d = %d\n", i, vm->regs[i]);
     }
 
-    printf("Stack (top -> bottom):\n");
-    for (int i = vm->sp; i < STACK_SIZE; i++) {
-        printf("[%d] = %d\n", i, vm->stack[i]);
+    printf("Call Stack (top -> bottom):\n");
+    for (int i = vm->csp; i < CALL_STACK_SIZE; i++) {
+        printf("[%d] = %d\n", i, vm->call_stack[i]);
     }
-    if (vm->sp == STACK_SIZE) {
+    if (vm->csp == CALL_STACK_SIZE) {
+        printf("<empty>\n");
+    }
+    printf("Data Stack (top -> bottom):\n");
+    for (int i = vm->dsp; i < DATA_STACK_SIZE; i++) {
+        printf("[%d] = %d\n", i, vm->data_stack[i]);
+    }
+    if (vm->dsp == DATA_STACK_SIZE) {
         printf("<empty>\n");
     }
     printf("Memory (first %d cells):\n", mem_preview);
@@ -163,45 +162,51 @@ void vm_dump(VM *vm, int mem_preview) {
 }
 
 int main() {
-    //r0 = 0
-    //r1 = 0
-    //r2 = 5
-    //loop_start:
-    //r3 = r2 -r1
-    //if r3 == 0 jmp end
-    //r4 = memory[r1]
-    //r0 += r4
-    //r1 += 1
-    //jmp loop_start
-    //end:
-    //print r0,
-    //halt
-    unsigned char program[] = {
-        OP_LOADI, 0, 0,
-        OP_LOADI, 1, 0,
-        OP_LOADI, 2, 5,
-        // loop_start (byte 9)
-        OP_SUB, 3, 2, 1,
-        OP_JZ, 31,
-        OP_LOAD_IND, 4, 1,
-        OP_ADD, 0, 0, 4,
-        OP_LOADI, 5, 1,
-        OP_ADD, 1, 1, 5,
-        OP_JMP, 9,
-        // end (byte 30)
-        OP_PRINT, 0,
-        OP_HALT
+    /*
+     * r0 = 0
+     * r1 = 0
+     * :loop_start
+     * cmp r1, 5
+     * if r1 == 5 jmp end
+     * r2 = memory[r1]
+     * r0 += r2
+     * r3 = 1
+     * r1 += 1
+     * jmp loop_start
+     * :end
+     * print r0
+     * halt
+     */
+    uint64_t program[] = {
+        INST(OP_LOADI, 0, 0, 0, 0),
+        INST(OP_LOADI, 1, 0, 0, 0),
+        // loop_start (index 2)
+        INST(OP_CMP, 1, 0, 0, 5),
+        INST(OP_JZ, 0, 0, 0, 9),
+        INST(OP_LOAD_IND, 2, 1, 0, 0),
+        INST(OP_ADD, 0, 0, 2, 0),
+        INST(OP_LOADI, 3, 0, 0, 1),
+        INST(OP_ADD, 1, 1, 3, 0),
+        INST(OP_JMP, 0, 0, 0, 2),
+        // end (index 9)
+        INST(OP_PRINT, 0, 0, 0, 0),
+        INST(OP_HALT, 0, 0, 0, 0)
     };
+
+
 
     VM vm = {0};
     vm.code = program;
-    vm.code_size = sizeof(program);
+    vm.code_size = sizeof(program) / sizeof(program[0]);
     vm.ip = 0;
     vm.flags = 0;
-    vm.sp = STACK_SIZE;
+    vm.dsp = DATA_STACK_SIZE;
+    vm.csp = CALL_STACK_SIZE;
 
-    printf("Loaded VM. \n code length: %d\n Stack size: %d\n Memory Size: %d\n Memory Head: %p\n", vm.code_size,
-           STACK_SIZE, MEM_SIZE, &vm.memory[0]);
+    printf(
+        "Loaded VM. \n code length: %d\n Call Stack size: %d\n Data Stack size: %d \n Memory Size: %d\n Memory Head: %p\n",
+        vm.code_size,
+        CALL_STACK_SIZE,DATA_STACK_SIZE, MEM_SIZE, &vm.memory[0]);
 
     for (int i = 0; i < 5; i++) {
         vm.memory[i] = i + 1;
