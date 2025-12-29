@@ -19,6 +19,7 @@ typedef struct {
     int ip;
     int execution_times;
     int code_size;
+    int halted;
     unsigned int flags;
 
     int data_stack[DATA_STACK_SIZE];

@@ -7,6 +7,7 @@
 #include "stack.h"
 #include "instruction.h"
 #include "io.h"
+
 void set_zf(VM *vm, int value) {
     if (value == 0) {
         vm->flags |= FLAG_ZF;
@@ -15,169 +16,174 @@ void set_zf(VM *vm, int value) {
     }
 }
 
-void vm_run(VM *vm) {
-    while (vm->ip < vm->code_size) {
-        uint8_t op, rd, rs1, rs2;
-        int32_t imm;
-        FETCH64(vm, op, rd, rs1, rs2, imm);
-        vm->execution_times++;
-        switch (op) {
-            case OP_ADD: {
-                vm->regs[rd] = vm->regs[rs1] + vm->regs[rs2];
-                set_zf(vm, vm->regs[rd]);
-                break;
-            }
-
-            case OP_SUB: {
-                vm->regs[rd] = vm->regs[rs1] - vm->regs[rs2];
-                set_zf(vm, vm->regs[rd]);
-                break;
-            }
-            case OP_MUL: {
-                vm->regs[rd] = vm->regs[rs1] * vm->regs[rs2];
-                set_zf(vm, vm->regs[rd]);
-                break;
-            }
-            case OP_PRINT: {
-                printf("%d\n", vm->regs[rd]);
-                break;
-            }
-            case OP_HALT: {
-                return;
-            }
-            case OP_JMP: {
-                vm->ip = imm;
-                break;
-            }
-            case OP_JZ: {
-                if (vm->flags & FLAG_ZF) {
-                    vm->ip = imm;
-                }
-                break;
-            }
-            case OP_PUSH: {
-                DATA_PUSH(vm, vm->regs[rd]);
-                break;
-            }
-            case OP_POP: {
-                vm->regs[rd] = DATA_POP(vm);
-                set_zf(vm, vm->regs[rd]);
-                break;
-            }
-            case OP_CALL: {
-                CALL_PUSH(vm, vm->ip);
-                vm->ip = imm;
-                break;
-            }
-            case OP_RET: {
-                vm->ip = CALL_POP(vm);
-                break;
-            }
-            case OP_LOAD: {
-                int address = rs1 + imm;
-                if (address >= 0 && address < MEM_SIZE) {
-                    vm->regs[rd] = vm->memory[address];
-                    set_zf(vm, vm->regs[rd]);
-                } else {
-                    printf("LOAD out of bounds: %d\n", address);
-                }
-                break;
-            }
-            case OP_LOAD_IND: {
-                int address = vm->regs[rs1] + imm;
-                if (address >= 0 && address < MEM_SIZE) {
-                    vm->regs[rd] = vm->memory[address];
-                    set_zf(vm, vm->regs[rd]);
-                } else {
-                    printf("LOAD_IND out of bounds: %d\n", address);
-                }
-                break;
-            }
-            case OP_STORE: {
-                int address = rs1 + imm;
-                if (address >= 0 && address < MEM_SIZE) {
-                    vm->memory[address] = vm->regs[rd];
-                } else {
-                    printf("STORE out of bounds: %d\n", address);
-                }
-                break;
-            }
-            case OP_STORE_IND: {
-                int address = vm->regs[rs1] + imm;
-                if (address >= 0 && address < MEM_SIZE) {
-                    vm->memory[address] = vm->regs[rd];
-                } else {
-                    printf("STORE_IND out of bounds: %d\n", address);
-                }
-                break;
-            }
-            case OP_CMP: {
-                int val1 = vm->regs[rd];
-                int val2 = (imm != 0) ? imm : vm->regs[rs1];
-                set_zf(vm, val1 - val2);
-                break;
-            }
-            case OP_MOV: {
-                vm->regs[rd] = vm->regs[rs1];
-                set_zf(vm, vm->regs[rd]);
-                break;
-            }
-            case OP_MOVI: {
-                vm->regs[rd]= imm;
-                set_zf(vm, vm->regs[rd]);
-                break;
-            }
-            case OP_MEMSET: {
-                int base = vm->regs[rd];
-                int value = vm->regs[rs1];
-                for (int i = 0; i < imm; i++) {
-                    int addr = base + i;
-                    if (addr >= 0 && addr < MEM_SIZE) {
-                        vm->memory[addr] = value;
-                    } else {
-                        printf("MEMSET out of bounds; %d\n", addr);
-                    }
-                }
-                break;
-            }
-            case OP_MEMCPY: {
-                int dest = vm->regs[rd];
-                int src = vm->regs[rs1];
-                for (int i = 0; i < imm; i++) {
-                    int daddr = dest + i;
-                    int saddr = src + i;
-                    if (daddr >=0 && daddr < MEM_SIZE && saddr >=0 && saddr < MEM_SIZE) {
-                        vm->memory[daddr] = vm->memory[saddr];
-                    } else {
-                        printf("MEMCPY out of bounds: d=%d, s=%d\n", daddr, saddr);
-                    }
-                }
-                break;
-            }
-            case OP_IN: {
-                int addr = rs1;
-                if (addr >=0 && addr < IO_SIZE) {
-                    vm->regs[rd] = vm->io[addr];
-                } else {
-                    printf("IN invalid IO address %d", addr);
-                }
-                break;
-            }
-            case OP_OUT:{
-                int addr = rs1;
-                if (addr >= 0 && addr < IO_SIZE) {
-                    accept_io(vm, addr, vm->regs[rd]);
-                } else {
-                    printf("OUT invalid IO address %d\n", addr);
-                }
-                break;
-            }
-
-            default: {
-                printf("Unknown opcode %d\n", op);
-                return;
-            }
+void vm_instruction_case(VM *vm) {
+    uint8_t op, rd, rs1, rs2;
+    int32_t imm;
+    FETCH64(vm, op, rd, rs1, rs2, imm);
+    vm->execution_times++;
+    switch (op) {
+        case OP_ADD: {
+            vm->regs[rd] = vm->regs[rs1] + vm->regs[rs2];
+            set_zf(vm, vm->regs[rd]);
+            break;
         }
+
+        case OP_SUB: {
+            vm->regs[rd] = vm->regs[rs1] - vm->regs[rs2];
+            set_zf(vm, vm->regs[rd]);
+            break;
+        }
+        case OP_MUL: {
+            vm->regs[rd] = vm->regs[rs1] * vm->regs[rs2];
+            set_zf(vm, vm->regs[rd]);
+            break;
+        }
+        case OP_PRINT: {
+            printf("%d\n", vm->regs[rd]);
+            break;
+        }
+        case OP_HALT: {
+            vm->halted = 1;
+            return;
+        }
+        case OP_JMP: {
+            vm->ip = imm;
+            break;
+        }
+        case OP_JZ: {
+            if (vm->flags & FLAG_ZF) {
+                vm->ip = imm;
+            }
+            break;
+        }
+        case OP_PUSH: {
+            DATA_PUSH(vm, vm->regs[rd]);
+            break;
+        }
+        case OP_POP: {
+            vm->regs[rd] = DATA_POP(vm);
+            set_zf(vm, vm->regs[rd]);
+            break;
+        }
+        case OP_CALL: {
+            CALL_PUSH(vm, vm->ip);
+            vm->ip = imm;
+            break;
+        }
+        case OP_RET: {
+            vm->ip = CALL_POP(vm);
+            break;
+        }
+        case OP_LOAD: {
+            int address = rs1 + imm;
+            if (address >= 0 && address < MEM_SIZE) {
+                vm->regs[rd] = vm->memory[address];
+                set_zf(vm, vm->regs[rd]);
+            } else {
+                printf("LOAD out of bounds: %d\n", address);
+            }
+            break;
+        }
+        case OP_LOAD_IND: {
+            int address = vm->regs[rs1] + imm;
+            if (address >= 0 && address < MEM_SIZE) {
+                vm->regs[rd] = vm->memory[address];
+                set_zf(vm, vm->regs[rd]);
+            } else {
+                printf("LOAD_IND out of bounds: %d\n", address);
+            }
+            break;
+        }
+        case OP_STORE: {
+            int address = rs1 + imm;
+            if (address >= 0 && address < MEM_SIZE) {
+                vm->memory[address] = vm->regs[rd];
+            } else {
+                printf("STORE out of bounds: %d\n", address);
+            }
+            break;
+        }
+        case OP_STORE_IND: {
+            int address = vm->regs[rs1] + imm;
+            if (address >= 0 && address < MEM_SIZE) {
+                vm->memory[address] = vm->regs[rd];
+            } else {
+                printf("STORE_IND out of bounds: %d\n", address);
+            }
+            break;
+        }
+        case OP_CMP: {
+            int val1 = vm->regs[rd];
+            int val2 = (imm != 0) ? imm : vm->regs[rs1];
+            set_zf(vm, val1 - val2);
+            break;
+        }
+        case OP_MOV: {
+            vm->regs[rd] = vm->regs[rs1];
+            set_zf(vm, vm->regs[rd]);
+            break;
+        }
+        case OP_MOVI: {
+            vm->regs[rd] = imm;
+            set_zf(vm, vm->regs[rd]);
+            break;
+        }
+        case OP_MEMSET: {
+            int base = vm->regs[rd];
+            int value = vm->regs[rs1];
+            for (int i = 0; i < imm; i++) {
+                int addr = base + i;
+                if (addr >= 0 && addr < MEM_SIZE) {
+                    vm->memory[addr] = value;
+                } else {
+                    printf("MEMSET out of bounds; %d\n", addr);
+                }
+            }
+            break;
+        }
+        case OP_MEMCPY: {
+            int dest = vm->regs[rd];
+            int src = vm->regs[rs1];
+            for (int i = 0; i < imm; i++) {
+                int daddr = dest + i;
+                int saddr = src + i;
+                if (daddr >= 0 && daddr < MEM_SIZE && saddr >= 0 && saddr < MEM_SIZE) {
+                    vm->memory[daddr] = vm->memory[saddr];
+                } else {
+                    printf("MEMCPY out of bounds: d=%d, s=%d\n", daddr, saddr);
+                }
+            }
+            break;
+        }
+        case OP_IN: {
+            int addr = rs1;
+            if (addr >= 0 && addr < IO_SIZE) {
+                vm->regs[rd] = vm->io[addr];
+            } else {
+                printf("IN invalid IO address %d", addr);
+            }
+            break;
+        }
+        case OP_OUT: {
+            int addr = rs1;
+            if (addr >= 0 && addr < IO_SIZE) {
+                accept_io(vm, addr, vm->regs[rd]);
+            } else {
+                printf("OUT invalid IO address %d\n", addr);
+            }
+            break;
+        }
+
+        default: {
+            printf("Unknown opcode %d\n", op);
+            return;
+        }
+    }
+}
+
+void vm_run(VM *vm) {
+    while (!vm->halted && vm->ip < vm->code_size) {
+        vm_instruction_case(vm);
     }
 }
 
@@ -257,7 +263,6 @@ int main() {
     };
 
 
-
     VM vm = {0};
     vm.code = program;
     vm.code_size = sizeof(program) / sizeof(program[0]);
@@ -276,7 +281,6 @@ int main() {
     }
     init_screen();
     vm_run(&vm);
-    render_screen();
     vm_dump(&vm, 16);
     printf("Execution complete in %d cycles.\n", vm.execution_times);
     return 0;

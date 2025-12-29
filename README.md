@@ -1,5 +1,16 @@
 # lamp-vm
 
+## Compile
+
+Use Cmake VERSION > 4.1.
+
+## Roadmap
+
+Implements a standard VGA-like screen.
+
+Implements a virtual harddisk
+
+Isolate assembly instructions into separate files.
 ## Instructions
 
 ### Instructions Mapping
