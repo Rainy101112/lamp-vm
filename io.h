@@ -3,8 +3,9 @@
 void accept_io(VM *vm, int addr, int value);
 
 enum IO_TABLE {
-    SCREEN = 0,
-    SCREEN_ATTRIBUTE,
+    SCREEN = 0x01,
+    SCREEN_ATTRIBUTE = 0x02,
+    KEYBOARD = 0x03,
     DISK_CMD = 0x10,
     DISK_LBA = 0x11,
     DISK_MEM = 0x12,

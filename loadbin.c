@@ -10,7 +10,7 @@ uint64_t* load_program(const char* filename, size_t *out_size)
         return NULL;
     }
     fseek(fp, 0, SEEK_END);
-    long file_size = ftell(fp);
+    const size_t file_size = ftell(fp);
     fseek(fp, 0, SEEK_SET);
     uint64_t* program = malloc(file_size);
     if (!program) {
@@ -18,7 +18,7 @@ uint64_t* load_program(const char* filename, size_t *out_size)
         fclose(fp);
         return NULL;
     }
-    size_t read_count = fread(program, 1, file_size, fp);
+    const size_t read_count = fread(program, 1, file_size, fp);
     if (read_count != file_size) {
         perror("fread");
         free(program);

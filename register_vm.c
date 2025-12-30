@@ -9,6 +9,7 @@
 #include "instruction.h"
 #include "io.h"
 #include "panic.h"
+#include "io_devices/frame/frame.h"
 #include "loadbin.h"
 #include "interrupt.h"
 #include "io_devices/disk/disk.h"
@@ -205,6 +206,7 @@ void vm_instruction_case(VM *vm) {
 }
 
 void vm_run(VM *vm) {
+    enable_raw_mode();
     while (!vm->halted && vm->ip < vm->code_size) {
         if (vm->panic) {
             printf("VM panic detected.\n");
@@ -212,7 +214,9 @@ void vm_run(VM *vm) {
         }
         vm_handle_interrupts(vm);
         vm_instruction_case(vm);
+        vm_handle_keyboard(vm);
     }
+    disable_raw_mode();
 }
 
 void vm_dump(VM *vm, int mem_preview) {
@@ -361,10 +365,6 @@ int main() {
         "Loaded VM. \n code length: %lu\n Call Stack size: %d\n Data Stack size: %d \n Memory Size: %lu\n Memory Head: %p\n",
         vm->code_size,
         CALL_STACK_SIZE,DATA_STACK_SIZE,MEM_SIZE, (void*)vm->memory);
-
-    for (int i = 0; i < 5; i++) {
-        vm->memory[i] = i + 1;
-    }
     init_screen();
     vm_run(vm);
     //v

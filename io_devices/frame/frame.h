@@ -1,5 +1,7 @@
 #ifndef VM_FRAME_H
 #define VM_FRAME_H
+#pragma once
+#include "../../vm.h"
 typedef struct {
     char ch;
     uint8_t attr;
@@ -22,4 +24,12 @@ void render_vga_screen();
 void flush_screen_dirty();
 
 void render_screen_dirty();
+
+void enable_raw_mode();
+
+void disable_raw_mode();
+
+int get_key_nonblocking();
+
+void vm_handle_keyboard(VM* vm);
 #endif //VM_FRAME_H

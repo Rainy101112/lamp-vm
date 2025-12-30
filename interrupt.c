@@ -34,7 +34,16 @@ void init_ivt(VM *vm) {
 void register_isr(VM *vm, int int_no, int isr_ip) {
     if (int_no < 0 || int_no >= IVT_SIZE) {
         panic(panic_format("Invalid interrupt number %d\n", int_no), vm);
-        return;;
+        return;
     }
     vm->memory[IVT_BASE + int_no] = isr_ip;
+}
+
+void trigger_interrupt(VM *vm, int int_no) {
+    if (int_no < 0 || int_no >= IVT_SIZE) return;
+    int isr_ip = vm->memory[IVT_BASE + int_no];
+    if (isr_ip != 0) {
+        printf("[VM] Trigger ISR %d at IP=%d\n", int_no, isr_ip);
+        vm->ip = isr_ip;
+    }
 }

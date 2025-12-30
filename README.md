@@ -13,7 +13,9 @@ VM will panic if a bad instruction was executed, and a debug message will be pri
 
 ### Interrupt Tables(IVT) Mapping
 
-In default, LampVM supports 256 interrupt ids. This vector starts at memory address 0x0, since memory is actually 
+In default, LampVM supports 256 interrupt ids. This vector starts at memory address 0x0, since memory is actually a segment on heap space.
+
+Keyboard Input now has the highest priority, it's located on 0x00. Edit 0x00 first in your program to configure the address handling Keyboard Interrupt.
 
 ## Roadmap
 
