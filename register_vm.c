@@ -29,7 +29,10 @@ void vm_instruction_case(VM *vm) {
     int32_t imm;
     FETCH64(vm, op, rd, rs1, rs2, imm);
     vm->execution_times++;
-    //printf("IP=%lu, executing opcode=%d\n", vm->ip, op);
+#ifdef DEBUG
+    printf("IP=%lu, executing opcode=%d\n", vm->ip, op);
+#endif
+
 
     switch (op) {
         case OP_ADD: {
@@ -315,7 +318,10 @@ int main() {
     init_screen();
     vm_run(vm);
     //v
-    //vm_dump(vm, 16);
+#ifdef DBEUG
+    vm_dump(vm, 1024);
+#endif
+
     flush_screen_final();
     printf("Execution complete in %lu cycles.\n", vm->execution_times);
     vm_destroy(vm);
