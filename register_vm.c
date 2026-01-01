@@ -29,6 +29,8 @@ void vm_instruction_case(VM *vm) {
     int32_t imm;
     FETCH64(vm, op, rd, rs1, rs2, imm);
     vm->execution_times++;
+    //printf("IP=%lu, executing opcode=%d\n", vm->ip, op);
+
     switch (op) {
         case OP_ADD: {
             vm->regs[rd] = vm->regs[rs1] + vm->regs[rs2];
@@ -47,6 +49,7 @@ void vm_instruction_case(VM *vm) {
             break;
         }
         case OP_HALT: {
+            flush_screen_final();
             vm->halted = 1;
             return;
         }
@@ -92,15 +95,16 @@ void vm_instruction_case(VM *vm) {
             break;
         }
         case OP_LOAD_IND: {
-            const int address = vm->regs[rs1] + imm;
-            if (address >= 0 && address < MEM_SIZE) {
-                vm->regs[rd] = vm->memory[address];
-                set_zf(vm, vm->regs[rd]);
-            } else {
-                panic(panic_format("LOAD_IND out of bounds: %d\n", address), vm);
+            int addr = vm->regs[rs1] + imm;
+            if (addr < 0 || addr >= vm->memory_size) {
+                panic(panic_format("LOAD_IND out of bounds: %d\n", addr), vm);
+                break;
             }
+            vm->regs[rd] = vm->memory[addr];
+            set_zf(vm, vm->regs[rd]);
             break;
         }
+
         case OP_STORE: {
             const int address = rs1 + imm;
             if (address >= 0 && address < MEM_SIZE) {
@@ -111,14 +115,15 @@ void vm_instruction_case(VM *vm) {
             break;
         }
         case OP_STORE_IND: {
-            const int address = vm->regs[rs1] + imm;
-            if (address >= 0 && address < MEM_SIZE) {
-                vm->memory[address] = vm->regs[rd];
-            } else {
-                panic(panic_format("STORE_IND out of bounds: %d\n", address), vm);
+            int addr = vm->regs[rs1] + imm;
+            if (addr < 0 || addr >= vm->memory_size) {
+                panic(panic_format("STORE_IND out of bounds: %d\n", addr), vm);
+                break;
             }
+            vm->memory[addr] = (uint8_t) vm->regs[rd];
             break;
         }
+
         case OP_CMP: {
             const int val1 = vm->regs[rd];
             const int val2 = (imm != 0) ? imm : vm->regs[rs1];
@@ -184,7 +189,7 @@ void vm_instruction_case(VM *vm) {
             const int int_no = rd;
             if (int_no < 0 || int_no >= IVT_SIZE) break;
 
-            const int isr_ip = vm->memory[IVT_BASE + int_no];
+            const uint64_t isr_ip = *(uint64_t *) (vm->memory + IVT_BASE + int_no * 8);
             if (isr_ip >= 0) {
                 CALL_PUSH(vm, vm->ip);
                 vm->ip = isr_ip;
@@ -207,7 +212,7 @@ void vm_instruction_case(VM *vm) {
 
 void vm_run(VM *vm) {
     enable_raw_mode();
-    while (!vm->halted && vm->ip < vm->code_size) {
+    while (!vm->halted) {
         if (vm->panic) {
             printf("VM panic detected.\n");
             return;
@@ -216,6 +221,7 @@ void vm_run(VM *vm) {
         vm_instruction_case(vm);
         vm_handle_keyboard(vm);
     }
+
     disable_raw_mode();
 }
 
@@ -248,32 +254,33 @@ void vm_dump(VM *vm, int mem_preview) {
     printf("ZF = %d\n", (vm->flags & FLAG_ZF) != 0);
 }
 
-VM *vm_create(size_t memory_size, uint64_t* program, size_t program_size) {
+VM *vm_create(size_t memory_size, const uint64_t *program, size_t program_size) {
     VM *vm = malloc(sizeof(VM));
     if (!vm) return NULL;
+    memset(vm, 0, sizeof(VM));
 
-    vm->ip = 0;
-    vm->execution_times = 0;
-    vm->code = program;
-    vm->code_size = program_size;
-    vm->halted = 0;
-    vm->panic = 0;
-    vm->flags = 0;
-    vm->dsp = 0;
-    vm->csp = 0;
-    vm->in_interrupt = 0;
     vm->memory_size = memory_size;
-
-    vm->memory = malloc(memory_size * sizeof(int));
+    vm->memory = malloc(memory_size);
     if (!vm->memory) {
         free(vm);
         return NULL;
     }
-    memset(vm->memory, 0, memory_size * sizeof(int));
+    memset(vm->memory, 0, memory_size);
+
+    size_t prog_bytes = program_size * sizeof(uint64_t);
+    if (PROGRAM_BASE + prog_bytes > memory_size) {
+        panic("Program too large\n", vm);
+        return vm;
+    }
+
+    memcpy(vm->memory + PROGRAM_BASE, program, prog_bytes);
+
+    vm->ip = PROGRAM_BASE;
+    vm->csp = CALL_STACK_SIZE;
+    vm->dsp = DATA_STACK_SIZE;
 
     return vm;
 }
-
 
 void vm_destroy(VM *vm) {
     if (!vm) return;
@@ -286,89 +293,30 @@ int main() {
      *Disk
      */
     uint64_t program[] = {
-        INST(OP_MOVI, 0, 0, 0, 0),
-        INST(OP_MOVI, 1, 0, 0, 0),
-        INST(OP_MOVI, 3, 0, 0, 28),
-
-        INST(OP_MOVI, 2, 0, 0, 'H'),
-        INST(OP_STORE_IND, 2, 0, 1, 0),
-        INST(OP_MOVI, 2, 0, 0, 'e'),
-        INST(OP_STORE_IND, 2, 0, 1, 1),
-        INST(OP_MOVI, 2, 0, 0, 'l'),
-        INST(OP_STORE_IND, 2, 0, 1, 2),
-        INST(OP_MOVI, 2, 0, 0, 'l'),
-        INST(OP_STORE_IND, 2, 0, 1, 3),
-        INST(OP_MOVI, 2, 0, 0, 'o'),
-        INST(OP_STORE_IND, 2, 0, 1, 4),
-        INST(OP_MOVI, 2, 0, 0, ' '),
-        INST(OP_STORE_IND, 2, 0, 1, 5),
-        INST(OP_MOVI, 2, 0, 0, 'W'),
-        INST(OP_STORE_IND, 2, 0, 1, 6),
-        INST(OP_MOVI, 2, 0, 0, 'o'),
-        INST(OP_STORE_IND, 2, 0, 1, 7),
-        INST(OP_MOVI, 2, 0, 0, 'r'),
-        INST(OP_STORE_IND, 2, 0, 1, 8),
-        INST(OP_MOVI, 2, 0, 0, 'l'),
-        INST(OP_STORE_IND, 2, 0, 1, 9),
-        INST(OP_MOVI, 2, 0, 0, 'd'),
-        INST(OP_STORE_IND, 2, 0, 1, 10),
-        INST(OP_MOVI, 2, 0, 0, '!'),
-        INST(OP_STORE_IND, 2, 0, 1, 11),
-        INST(OP_MOVI, 2, 0, 0, ' '),
-        INST(OP_STORE_IND, 2, 0, 1, 12),
-        INST(OP_MOVI, 2, 0, 0, 'T'),
-        INST(OP_STORE_IND, 2, 0, 1, 13),
-        INST(OP_MOVI, 2, 0, 0, 'h'),
-        INST(OP_STORE_IND, 2, 0, 1, 14),
-        INST(OP_MOVI, 2, 0, 0, 'i'),
-        INST(OP_STORE_IND, 2, 0, 1, 15),
-        INST(OP_MOVI, 2, 0, 0, 's'),
-        INST(OP_STORE_IND, 2, 0, 1, 16),
-        INST(OP_MOVI, 2, 0, 0, ' '),
-        INST(OP_STORE_IND, 2, 0, 1, 17),
-        INST(OP_MOVI, 2, 0, 0, 'i'),
-        INST(OP_STORE_IND, 2, 0, 1, 18),
-        INST(OP_MOVI, 2, 0, 0, 's'),
-        INST(OP_STORE_IND, 2, 0, 1, 19),
-        INST(OP_MOVI, 2, 0, 0, ' '),
-        INST(OP_STORE_IND, 2, 0, 1, 20),
-        INST(OP_MOVI, 2, 0, 0, 'V'),
-        INST(OP_STORE_IND, 2, 0, 1, 21),
-        INST(OP_MOVI, 2, 0, 0, 'M'),
-        INST(OP_STORE_IND, 2, 0, 1, 22),
-        INST(OP_MOVI, 2, 0, 0, ' '),
-        INST(OP_STORE_IND, 2, 0, 1, 23),
-        INST(OP_MOVI, 2, 0, 0, 't'),
-        INST(OP_STORE_IND, 2, 0, 1, 24),
-        INST(OP_MOVI, 2, 0, 0, 'e'),
-        INST(OP_STORE_IND, 2, 0, 1, 25),
-        INST(OP_MOVI, 2, 0, 0, 's'),
-        INST(OP_STORE_IND, 2, 0, 1, 26),
-        INST(OP_MOVI, 2, 0, 0, 't'),
-        INST(OP_STORE_IND, 2, 0, 1, 27),
-        INST(OP_MOVI, 0, 0, 0, 0),
-        INST(OP_OUT, 0, DISK_MEM, 0, 0),
-        INST(OP_MOVI, 0, 0, 0, 0),
-        INST(OP_OUT, 0, DISK_LBA, 0, 0),
-        INST(OP_MOVI, 0, 0, 0, 1),
-        INST(OP_OUT, 0, DISK_COUNT, 0, 0),
-
-        INST(OP_MOVI, 0, 0, 0, DISK_CMD_WRITE),
-        INST(OP_OUT, 0, DISK_CMD, 0, 0),
-        INST(OP_HALT, 0, 0, 0, 0)
+        INST(OP_MOVI, 2, 0, 0, 'H'), INST(OP_OUT, 2, SCREEN, 0, 0), INST(OP_MOVI, 2, 0, 0, 'e'),
+        INST(OP_OUT, 2, SCREEN, 0, 0), INST(OP_MOVI, 2, 0, 0, 'l'), INST(OP_OUT, 2, SCREEN, 0, 0),
+        INST(OP_MOVI, 2, 0, 0, 'l'), INST(OP_OUT, 2, SCREEN, 0, 0), INST(OP_MOVI, 2, 0, 0, 'o'),
+        INST(OP_OUT, 2, SCREEN, 0, 0), INST(OP_MOVI, 2, 0, 0, ' '), INST(OP_OUT, 2, SCREEN, 0, 0),
+        INST(OP_MOVI, 2, 0, 0, 'W'), INST(OP_OUT, 2, SCREEN, 0, 0), INST(OP_MOVI, 2, 0, 0, 'o'),
+        INST(OP_OUT, 2, SCREEN, 0, 0), INST(OP_MOVI, 2, 0, 0, 'r'), INST(OP_OUT, 2, SCREEN, 0, 0),
+        INST(OP_MOVI, 2, 0, 0, 'l'), INST(OP_OUT, 2, SCREEN, 0, 0), INST(OP_MOVI, 2, 0, 0, 'd'),
+        INST(OP_OUT, 2, SCREEN, 0, 0), INST(OP_MOVI, 2, 0, 0, '!'), INST(OP_OUT, 2, SCREEN, 0, 0),
+        INST(OP_MOVI, 2, 0, 0, '!'), INST(OP_OUT, 2, SCREEN, 0, 0), INST(OP_MOVI, 2, 0, 0, '!'),
+        INST(OP_OUT, 2, SCREEN, 0, 0), INST(OP_MOVI, 2, 0, 0, '\n'), INST(OP_HALT, 0, 0, 0, 0)
     };
+
     size_t program_size = sizeof(program) / sizeof(program[0]);
     VM *vm = vm_create(MEM_SIZE, program, program_size);
     disk_init(vm, "./disk.img");
     init_ivt(vm);
     printf(
-        "Loaded VM. \n code length: %lu\n Call Stack size: %d\n Data Stack size: %d \n Memory Size: %lu\n Memory Head: %p\n",
-        vm->code_size,
-        CALL_STACK_SIZE,DATA_STACK_SIZE,MEM_SIZE, (void*)vm->memory);
+        "Loaded VM. \n Call Stack size: %d\n Data Stack size: %d \n Memory Size: %lu\n Memory Head: %p\n",
+        CALL_STACK_SIZE,DATA_STACK_SIZE, MEM_SIZE, (void *) vm->memory);
     init_screen();
     vm_run(vm);
     //v
     //vm_dump(vm, 16);
+    flush_screen_final();
     printf("Execution complete in %lu cycles.\n", vm->execution_times);
     vm_destroy(vm);
     return 0;

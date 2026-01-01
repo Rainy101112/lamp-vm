@@ -10,6 +10,17 @@ Use Cmake VERSION > 4.1.
 
 VM will panic if a bad instruction was executed, and a debug message will be print.
 
+### Current Memory Mapping
+
+0x00000000 ──────────────────
+
+IVT (256 bytes)
+
+0x00000100 ──────────────────
+
+Program Code
+
+...
 
 ### Interrupt Tables(IVT) Mapping
 

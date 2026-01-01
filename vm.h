@@ -10,12 +10,19 @@
 
 #define REG_COUNT 8
 #define DUMP_MEM_SEEK_LEN 16
+
 #define DATA_STACK_SIZE 256
 #define CALL_STACK_SIZE 256
+#define IVT_SIZE   256
+
 #define FLAG_ZF 1
 #define IO_SIZE 256
-#define IVT_BASE 0x0
-#define IVT_SIZE 256
+
+#define IVT_BASE   0x0000
+#define CALL_STACK_BASE 0x10000
+#define DATA_STACK_BASE 0x11000
+
+#define PROGRAM_BASE  (IVT_BASE + IVT_SIZE + CALL_STACK_SIZE + DATA_STACK_SIZE)
 #define IVT_ENTRY_SIZE 1
 
 typedef struct {
@@ -31,7 +38,6 @@ typedef struct {
     uint64_t *code;
     size_t ip;
     size_t execution_times;
-    size_t code_size;
     int halted;
     int panic;
     unsigned int flags;
@@ -42,7 +48,7 @@ typedef struct {
     int call_stack[CALL_STACK_SIZE];
     int csp;
 
-    int *memory;
+    uint8_t *memory;
     size_t memory_size;
 
     int io[IO_SIZE];

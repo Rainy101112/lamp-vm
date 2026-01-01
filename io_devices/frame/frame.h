@@ -32,4 +32,6 @@ void disable_raw_mode();
 int get_key_nonblocking();
 
 void vm_handle_keyboard(VM* vm);
+
+void flush_screen_final();
 #endif //VM_FRAME_H

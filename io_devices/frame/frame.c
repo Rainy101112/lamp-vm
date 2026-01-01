@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #define SCREEN_WIDTH 80
 #define SCREEN_HEIGHT 25
-#define FLUSH_THRESHOLD 10
+#define FLUSH_THRESHOLD 3
 int cursor_x = 0;
 int cursor_y = 0;
 static int refresh_counter = 0;
@@ -14,6 +14,10 @@ Cell screen[SCREEN_HEIGHT][SCREEN_WIDTH];
 DirtyRect dirty = {0,0,0,0,0};
 uint16_t vga_memory[SCREEN_HEIGHT * SCREEN_WIDTH];
 #define VGA_ADDR(x,y) ((y)*SCREEN_WIDTH + (x))
+
+void set_dirty(int value) {
+    dirty.dirty = value;
+}
 
 void init_screen() {
     for (int y = 0; y < SCREEN_HEIGHT; y++) {
@@ -88,7 +92,6 @@ void clear_screen() {
     system("clear");
 }
 void render_vga_screen() {
-    clear_screen();
     flush_to_vga();
 
     for (int y = 0; y < SCREEN_HEIGHT; y++) {
@@ -108,4 +111,10 @@ void render_screen_dirty() {
         }
     }
     dirty.dirty = 0;
+}
+void flush_screen_final() {
+    dirty.dirty = 1;
+    dirty.x1 = 0; dirty.y1 = 0;
+    dirty.x2 = SCREEN_WIDTH-1; dirty.y2 = SCREEN_HEIGHT-1;
+    render_vga_screen();
 }
