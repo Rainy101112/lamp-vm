@@ -295,6 +295,7 @@ int main() {
     /*
      *Disk
      */
+    /*
     uint64_t program[] = {
         INST(OP_MOVI, 2, 0, 0, 'H'), INST(OP_OUT, 2, SCREEN, 0, 0), INST(OP_MOVI, 2, 0, 0, 'e'),
         INST(OP_OUT, 2, SCREEN, 0, 0), INST(OP_MOVI, 2, 0, 0, 'l'), INST(OP_OUT, 2, SCREEN, 0, 0),
@@ -309,6 +310,10 @@ int main() {
     };
 
     size_t program_size = sizeof(program) / sizeof(program[0]);
+    */
+    const char* filename = "program";
+    size_t program_size = 0;
+    uint64_t* program = load_program(filename, &program_size);
     VM *vm = vm_create(MEM_SIZE, program, program_size);
     disk_init(vm, "./disk.img");
     init_ivt(vm);
@@ -317,7 +322,6 @@ int main() {
         CALL_STACK_SIZE,DATA_STACK_SIZE, MEM_SIZE, (void *) vm->memory);
     init_screen();
     vm_run(vm);
-    //v
 #ifdef DBEUG
     vm_dump(vm, 1024);
 #endif
