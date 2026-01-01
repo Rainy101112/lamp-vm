@@ -6,6 +6,8 @@ Use Cmake VERSION > 4.1.
 
 ## Features
 
+Basic program should be generated using [Assembler](https://github.com/glowingstone124/lampvm_assembler) and be placed at the working directory.
+
 ### Panic
 
 VM will panic if a bad instruction was executed, and a debug message will be print.
