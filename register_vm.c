@@ -12,9 +12,10 @@
 #include "io_devices/frame/frame.h"
 #include "loadbin.h"
 #include "interrupt.h"
+#include "memory.h"
 #include "io_devices/disk/disk.h"
 
-const size_t MEM_SIZE = 1048576; //4MB
+const size_t MEM_SIZE = 1048576 * 4; //4MB
 
 void set_zf(VM *vm, int value) {
     if (value == 0) {
@@ -85,45 +86,14 @@ void vm_instruction_case(VM *vm) {
             break;
         }
         case OP_LOAD: {
-            const int address = rs1 + imm;
-            if (address >= 0 && address < MEM_SIZE) {
-                vm->regs[rd] = vm->memory[address];
-                set_zf(vm, vm->regs[rd]);
-            } else {
-                panic(
-                    panic_format("LOAD out of bounds: %d\n", address),
-                    vm
-                );
-            }
-            break;
-        }
-        case OP_LOAD_IND: {
-            int addr = vm->regs[rs1] + imm;
-            if (addr < 0 || addr >= vm->memory_size) {
-                panic(panic_format("LOAD_IND out of bounds: %d\n", addr), vm);
-                break;
-            }
-            vm->regs[rd] = vm->memory[addr];
+            const vm_addr_t addr = vm->regs[rs1] + imm;
+            vm->regs[rd] = vm_read8(vm, addr);
             set_zf(vm, vm->regs[rd]);
             break;
         }
-
         case OP_STORE: {
-            const int address = rs1 + imm;
-            if (address >= 0 && address < MEM_SIZE) {
-                vm->memory[address] = vm->regs[rd];
-            } else {
-                panic(panic_format("STORE out of bounds: %d\n", address), vm);
-            }
-            break;
-        }
-        case OP_STORE_IND: {
-            int addr = vm->regs[rs1] + imm;
-            if (addr < 0 || addr >= vm->memory_size) {
-                panic(panic_format("STORE_IND out of bounds: %d\n", addr), vm);
-                break;
-            }
-            vm->memory[addr] = (uint8_t) vm->regs[rd];
+            const vm_addr_t addr = vm->regs[rs1] + imm;
+            vm_write8(vm, addr, (uint8_t)vm->regs[rd]);
             break;
         }
 
@@ -144,29 +114,23 @@ void vm_instruction_case(VM *vm) {
             break;
         }
         case OP_MEMSET: {
-            const int base = vm->regs[rd];
-            const int value = vm->regs[rs1];
-            for (int i = 0; i < imm; i++) {
-                const int addr = base + i;
-                if (addr >= 0 && addr < MEM_SIZE) {
-                    vm->memory[addr] = value;
-                } else {
-                    panic(panic_format("MEMSET out of bounds; %d\n", addr), vm);
-                }
+            const uint32_t base  = (uint32_t) vm->regs[rd];
+            const uint8_t  value = (uint8_t)  vm->regs[rs1];
+            const uint32_t count = (uint32_t) imm;
+
+            for (uint32_t i = 0; i < count; i++) {
+                vm_write8(vm, base + i, value);
             }
             break;
         }
         case OP_MEMCPY: {
-            const int dest = vm->regs[rd];
-            const int src = vm->regs[rs1];
-            for (int i = 0; i < imm; i++) {
-                const int daddr = dest + i;
-                const int saddr = src + i;
-                if (daddr >= 0 && daddr < MEM_SIZE && saddr >= 0 && saddr < MEM_SIZE) {
-                    vm->memory[daddr] = vm->memory[saddr];
-                } else {
-                    panic(panic_format("MEMCPY out of bounds: d=%d, s=%d\n", daddr, saddr), vm);
-                }
+            const uint32_t dest  = (uint32_t) vm->regs[rd];
+            const uint32_t src   = (uint32_t) vm->regs[rs1];
+            const uint32_t count = (uint32_t) imm;
+
+            for (uint32_t i = 0; i < count; i++) {
+                uint8_t v = vm_read8(vm, src + i);
+                vm_write8(vm, dest + i, v);
             }
             break;
         }
@@ -189,18 +153,19 @@ void vm_instruction_case(VM *vm) {
             break;
         }
         case OP_INT: {
-            const int int_no = rd;
-            if (int_no < 0 || int_no >= IVT_SIZE) break;
+            const uint32_t int_no = rd;
+            if (int_no >= IVT_SIZE) break;
 
-            const uint64_t isr_ip = *(uint64_t *) (vm->memory + IVT_BASE + int_no * 8);
-            if (isr_ip >= 0) {
-                CALL_PUSH(vm, vm->ip);
-                vm->ip = isr_ip;
-                vm->in_interrupt = 1;
-            }
+            const vm_addr_t ivt_entry =
+                IVT_BASE + int_no * 8;
+
+            const uint64_t isr_ip = vm_read64(vm, ivt_entry);
+
+            CALL_PUSH(vm, vm->ip);
+            vm->ip = isr_ip;
+            vm->in_interrupt = 1;
             break;
         }
-
         case OP_IRET: {
             vm->ip = CALL_POP(vm);
             vm->in_interrupt = 0;

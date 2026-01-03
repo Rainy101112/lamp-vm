@@ -82,8 +82,7 @@ will be 0, otherwise it will be 1.
 
 MOV/MOVI: Move rs1's value or a immediate value to rd.
 
-STORE/LOAD v.s. STORE_IND/LOAD_IND: The former uses a constant value which is defined at the beginning of this cycle,
-unlike the latter uses the value in register dynamically.**
+STORE/LOAD: Use relative addressing to store/load a value into memory.
 
 MEMSET: Fill a memory segment with the value in rs1; the segment starts at the address in rd and has a length of imm.
 

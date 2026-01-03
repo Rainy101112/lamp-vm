@@ -25,6 +25,8 @@
 #define PROGRAM_BASE  (IVT_BASE + IVT_SIZE + CALL_STACK_SIZE + DATA_STACK_SIZE)
 #define IVT_ENTRY_SIZE 1
 
+typedef uint32_t vm_addr_t;
+
 typedef struct {
     FILE *fp;
     int lba;
@@ -71,8 +73,6 @@ enum {
     OP_RET,
     OP_LOAD,
     OP_STORE,
-    OP_LOAD_IND,
-    OP_STORE_IND,
     OP_CMP,
     OP_MOV,
     OP_MOVI,

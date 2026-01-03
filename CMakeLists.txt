@@ -20,7 +20,9 @@ add_executable(vm
         io_devices/disk/disk.h
         interrupt.c
         interrupt.h
-        io_devices/frame/terminalin.c)
+        io_devices/frame/terminalin.c
+        memory.h
+        memory.c)
 
 target_compile_options(vm PRIVATE
         -Wall
