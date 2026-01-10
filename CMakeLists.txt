@@ -2,7 +2,9 @@ cmake_minimum_required(VERSION 4.1)
 project(vm C)
 
 set(CMAKE_C_STANDARD 11)
-
+set(CMAKE_OSX_ARCHITECTURES arm64)
+add_compile_definitions(SDL_DISABLE_IMMINTRIN_H)
+find_package(SDL2 REQUIRED)
 add_executable(vm
         register_vm.c
         vm.h
@@ -22,7 +24,12 @@ add_executable(vm
         interrupt.h
         io_devices/frame/terminalin.c
         memory.h
-        memory.c)
+        memory.c
+        io_devices/vga_display/display.c
+        io_devices/vga_display/display.h
+)
+target_include_directories(vm PRIVATE ${SDL2_INCLUDE_DIRS})
+target_link_libraries(vm PRIVATE ${SDL2_LIBRARIES})
 
 target_compile_options(vm PRIVATE
         -Wall
@@ -34,7 +41,6 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release")
     target_compile_definitions(vm PRIVATE RELEASE_BUILD)
     target_compile_options(vm PRIVATE
             -O3
-            -march=native
             -flto
     )
     target_link_options(vm PRIVATE -flto)

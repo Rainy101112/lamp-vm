@@ -7,6 +7,7 @@
 #define SCREEN_WIDTH 80
 #define SCREEN_HEIGHT 25
 #define FLUSH_THRESHOLD 3
+
 int cursor_x = 0;
 int cursor_y = 0;
 static int refresh_counter = 0;

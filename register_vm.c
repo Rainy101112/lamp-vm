@@ -1,6 +1,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <SDL2/SDL_timer.h>
 
 #include "fetch.h"
 #include "vm.h"
@@ -12,6 +14,7 @@
 #include "interrupt.h"
 #include "memory.h"
 #include "io_devices/disk/disk.h"
+#include "io_devices/vga_display/display.h"
 
 const size_t MEM_SIZE = 1048576 * 4; //4MB
 
@@ -66,7 +69,7 @@ void vm_instruction_case(VM *vm) {
             break;
         }
         case OP_PUSH: {
-            data_push(vm, (uint8_t)vm->regs[rd]);
+            data_push(vm, (uint8_t) vm->regs[rd]);
             break;
         }
         case OP_POP: {
@@ -91,10 +94,14 @@ void vm_instruction_case(VM *vm) {
         }
         case OP_STORE: {
             const vm_addr_t addr = vm->regs[rs1] + imm;
-            vm_write8(vm, addr, (uint8_t)vm->regs[rd]);
+            vm_write8(vm, addr, (uint8_t) vm->regs[rd]);
             break;
         }
-
+        case OP_STORE32: {
+            const vm_addr_t addr = vm->regs[rs1] + vm->regs[rs2] + imm;
+            vm_write32(vm, addr, (uint32_t) vm->regs[rd]);
+            break;
+        }
         case OP_CMP: {
             const int val1 = vm->regs[rd];
             const int val2 = (imm != 0) ? imm : vm->regs[rs1];
@@ -112,8 +119,8 @@ void vm_instruction_case(VM *vm) {
             break;
         }
         case OP_MEMSET: {
-            const uint32_t base  = (uint32_t) vm->regs[rd];
-            const uint8_t  value = (uint8_t)  vm->regs[rs1];
+            const uint32_t base = (uint32_t) vm->regs[rd];
+            const uint8_t value = (uint8_t) vm->regs[rs1];
             const uint32_t count = (uint32_t) imm;
 
             for (uint32_t i = 0; i < count; i++) {
@@ -122,8 +129,8 @@ void vm_instruction_case(VM *vm) {
             break;
         }
         case OP_MEMCPY: {
-            const uint32_t dest  = (uint32_t) vm->regs[rd];
-            const uint32_t src   = (uint32_t) vm->regs[rs1];
+            const uint32_t dest = (uint32_t) vm->regs[rd];
+            const uint32_t src = (uint32_t) vm->regs[rs1];
             const uint32_t count = (uint32_t) imm;
 
             for (uint32_t i = 0; i < count; i++) {
@@ -177,6 +184,7 @@ void vm_instruction_case(VM *vm) {
 
 void vm_run(VM *vm) {
     enable_raw_mode();
+    vga_display_init();
     while (!vm->halted) {
         if (vm->panic) {
             printf("VM panic detected.\n");
@@ -184,10 +192,13 @@ void vm_run(VM *vm) {
         }
         vm_handle_interrupts(vm);
         vm_instruction_case(vm);
+        display_poll_events(vm);
+        display_update(vm);
         vm_handle_keyboard(vm);
-    }
 
+    }
     disable_raw_mode();
+    display_shutdown();
 }
 
 void vm_dump(VM *vm, int mem_preview) {
@@ -219,9 +230,12 @@ void vm_dump(VM *vm, int mem_preview) {
     printf("ZF = %d\n", (vm->flags & FLAG_ZF) != 0);
 }
 
-VM *vm_create(size_t memory_size, const uint64_t *program, size_t program_size) {
+VM *vm_create(size_t memory_size,
+              const uint64_t *program,
+              size_t program_size) {
     VM *vm = malloc(sizeof(VM));
     if (!vm) return NULL;
+
     memset(vm, 0, sizeof(VM));
 
     vm->memory_size = memory_size;
@@ -230,7 +244,24 @@ VM *vm_create(size_t memory_size, const uint64_t *program, size_t program_size) 
         free(vm);
         return NULL;
     }
+
     memset(vm->memory, 0, memory_size);
+
+    if (memory_size < FB_SIZE) {
+        panic("Not enough memory for framebuffer\n", vm);
+        return vm;
+    }
+
+    size_t fb_base = FB_BASE(memory_size);
+    if (fb_base + FB_SIZE > memory_size) {
+        panic("Framebuffer out of range\n", vm);
+        return vm;
+    }
+
+    vm->fb = malloc(FB_SIZE);
+    printf("vm->fb = %p\n", (void*)vm->fb);
+    printf("fb_base = 0x%zx\n", fb_base);
+    printf("fb address mod 4 = %zu\n", ((size_t)vm->fb) % 4);
 
     size_t prog_bytes = program_size * sizeof(uint64_t);
     if (PROGRAM_BASE + prog_bytes > memory_size) {
@@ -247,6 +278,7 @@ VM *vm_create(size_t memory_size, const uint64_t *program, size_t program_size) 
     return vm;
 }
 
+
 void vm_destroy(VM *vm) {
     if (!vm) return;
     if (vm->memory) free(vm->memory);
@@ -257,19 +289,23 @@ int main() {
     /*
      *Disk
      */
-
     uint64_t program[] = {
-        INST(OP_MOVI, 2, 0, 0, 'H'), INST(OP_OUT, 2, SCREEN, 0, 0), INST(OP_MOVI, 2, 0, 0, 'e'),
-        INST(OP_OUT, 2, SCREEN, 0, 0), INST(OP_MOVI, 2, 0, 0, 'l'), INST(OP_OUT, 2, SCREEN, 0, 0),
-        INST(OP_MOVI, 2, 0, 0, 'l'), INST(OP_OUT, 2, SCREEN, 0, 0), INST(OP_MOVI, 2, 0, 0, 'o'),
-        INST(OP_OUT, 2, SCREEN, 0, 0), INST(OP_MOVI, 2, 0, 0, ' '), INST(OP_OUT, 2, SCREEN, 0, 0),
-        INST(OP_MOVI, 2, 0, 0, 'W'), INST(OP_OUT, 2, SCREEN, 0, 0), INST(OP_MOVI, 2, 0, 0, 'o'),
-        INST(OP_OUT, 2, SCREEN, 0, 0), INST(OP_MOVI, 2, 0, 0, 'r'), INST(OP_OUT, 2, SCREEN, 0, 0),
-        INST(OP_MOVI, 2, 0, 0, 'l'), INST(OP_OUT, 2, SCREEN, 0, 0), INST(OP_MOVI, 2, 0, 0, 'd'),
-        INST(OP_OUT, 2, SCREEN, 0, 0), INST(OP_MOVI, 2, 0, 0, '!'), INST(OP_OUT, 2, SCREEN, 0, 0),
-        INST(OP_MOVI, 2, 0, 0, '!'), INST(OP_OUT, 2, SCREEN, 0, 0), INST(OP_MOVI, 2, 0, 0, '!'),
-        INST(OP_OUT, 2, SCREEN, 0, 0), INST(OP_MOVI, 2, 0, 0, '\n'), INST(OP_HALT, 0, 0, 0, 0)
+        INST(OP_MOVI, 0, 0, 0, FB_BASE(MEM_SIZE)),
+        INST(OP_MOVI, 1, 0, 0, 0x474A43),
+        INST(OP_MOVI, 2, 0, 0, 0),
+        INST(OP_MOVI, 7, 0, 0, 4),
+        // LOOP_START (index 4)
+        INST(OP_STORE32, 1, 0, 2, 0),
+        INST(OP_ADD, 2, 2, 7, 0),
+        INST(OP_CMP, 2, 0, 0, FB_SIZE),
+        INST(OP_JZ, 0, 0, 0, PROGRAM_BASE + 8*8),
+        INST(OP_JMP, 0, 0, 0, PROGRAM_BASE + 4*8),
+
+        // HALT (index 8)
+        INST(OP_HALT, 0, 0, 0, 0)
     };
+
+
 
     size_t program_size = sizeof(program) / sizeof(program[0]);
     /*

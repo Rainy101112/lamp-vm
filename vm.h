@@ -16,6 +16,12 @@ static inline uint64_t INST(
 ) {
     return ((uint64_t) op << 56 | (uint64_t) rd << 48 | (uint64_t) rs1 << 40 | (uint64_t) rs2 << 32) | imm;
 }
+
+#define FB_WIDTH 640
+#define FB_HEIGHT 480
+#define FB_BPP  4
+#define FB_SIZE    (FB_WIDTH * FB_HEIGHT * FB_BPP)
+
 #define FLAG_ZF 1
 #define IO_SIZE 256
 
@@ -31,7 +37,7 @@ static inline uint64_t INST(
 #define CALL_STACK_BASE  (IVT_BASE + IVT_SIZE * IVT_ENTRY_SIZE)
 #define DATA_STACK_BASE  (CALL_STACK_BASE + CALL_STACK_SIZE * 8)
 #define PROGRAM_BASE     (DATA_STACK_BASE + DATA_STACK_SIZE * 8)
-
+#define FB_BASE(addr_space_size) ((addr_space_size) - FB_SIZE)
 typedef uint32_t vm_addr_t;
 
 typedef struct {
@@ -59,6 +65,11 @@ typedef struct {
 
     uint8_t *memory;
     size_t memory_size;
+    /*
+     * framebuffer targets to a segment in our memory
+     * [fb_base, fb_base + FB_SIZE)
+     */
+    uint32_t *fb;
 
     int io[IO_SIZE];
 
@@ -80,6 +91,7 @@ enum {
     OP_RET,
     OP_LOAD,
     OP_STORE,
+    OP_STORE32,
     OP_CMP,
     OP_MOV,
     OP_MOVI,
