@@ -16,4 +16,5 @@ uint64_t vm_read64(VM *vm, vm_addr_t addr);
 
 void vm_write8 (VM *vm, vm_addr_t addr, uint8_t  value);
 void vm_write32(VM *vm, vm_addr_t addr, uint32_t value);
+void vm_write64(VM *vm, vm_addr_t addr, uint64_t value);
 #endif //VM_MEMORY_H

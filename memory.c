@@ -58,3 +58,18 @@ void vm_write32(VM *vm, vm_addr_t addr, uint32_t value) {
     vm->memory[addr + 2] = (value >> 16) & 0xFF;
     vm->memory[addr + 3] = (value >> 24) & 0xFF;
 }
+
+void vm_write64(VM *vm, vm_addr_t addr, uint64_t value) {
+    if (!in_ram(vm, addr, 8)) {
+        panic(panic_format("WRITE64 out of bounds: 0x%08x", addr), vm);
+        return;
+    }
+    vm->memory[addr + 0] = (value >> 0)  & 0xFF;
+    vm->memory[addr + 1] = (value >> 8)  & 0xFF;
+    vm->memory[addr + 2] = (value >> 16) & 0xFF;
+    vm->memory[addr + 3] = (value >> 24) & 0xFF;
+    vm->memory[addr + 4] = (value >> 32) & 0xFF;
+    vm->memory[addr + 5] = (value >> 40) & 0xFF;
+    vm->memory[addr + 6] = (value >> 48) & 0xFF;
+    vm->memory[addr + 7] = (value >> 56) & 0xFF;
+}

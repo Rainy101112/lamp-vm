@@ -1,7 +1,7 @@
 #include "stack.h"
 #include "vm.h"
 #include "interrupt.h"
-
+#include "memory.h"
 #include "panic.h"
 //
 // Created by Max Wang on 2025/12/30.
@@ -9,41 +9,42 @@
 void vm_handle_interrupts(VM *vm) {
     if (vm->in_interrupt) return;
 
-    for (int i = 0; i < IVT_SIZE; i++) {
-        if (vm->interrupt_flags[i]) {
-            vm->interrupt_flags[i] = 0;
-            int isr_ip = vm->memory[IVT_BASE + i];
-            if (isr_ip >= 0) {
-                CALL_PUSH(vm, vm->ip);
-                vm->ip = isr_ip;
-                vm->in_interrupt = 1;
-                break;
-            }
-        }
+    for (uint32_t i = 0; i < IVT_SIZE; i++) {
+        if (!vm->interrupt_flags[i]) continue;
+
+        vm->interrupt_flags[i] = 0;
+
+        uint64_t isr_ip = vm_read64(vm, IVT_BASE + i * 8);
+        if (isr_ip == UINT64_MAX) continue;
+
+        call_push(vm, vm->ip);
+        vm->ip = isr_ip;
+        vm->in_interrupt = 1;
+        break;
     }
 }
 
+
 void init_ivt(VM *vm) {
-    for (int i = 0; i < IVT_SIZE; i++) {
-        vm->memory[IVT_BASE + i] = -1;
+    for (uint32_t i = 0; i < IVT_SIZE; i++) {
+        vm_write64(vm, IVT_BASE + i * 8, UINT64_MAX);
         vm->interrupt_flags[i] = 0;
     }
     vm->in_interrupt = 0;
 }
 
-void register_isr(VM *vm, int int_no, int isr_ip) {
-    if (int_no < 0 || int_no >= IVT_SIZE) {
-        panic(panic_format("Invalid interrupt number %d\n", int_no), vm);
+
+void register_isr(VM *vm, uint32_t int_no, uint64_t isr_ip) {
+    if (int_no >= IVT_SIZE) {
+        panic(panic_format("Invalid interrupt number %u\n", int_no), vm);
         return;
     }
-    vm->memory[IVT_BASE + int_no] = isr_ip;
+
+    vm_write64(vm, IVT_BASE + int_no * 8, isr_ip);
 }
 
-void trigger_interrupt(VM *vm, int int_no) {
-    if (int_no < 0 || int_no >= IVT_SIZE) return;
-    int isr_ip = vm->memory[IVT_BASE + int_no];
-    if (isr_ip != 0) {
-        printf("[VM] Trigger ISR %d at IP=%d\n", int_no, isr_ip);
-        vm->ip = isr_ip;
-    }
+
+void trigger_interrupt(VM *vm, uint32_t int_no) {
+    if (int_no >= IVT_SIZE) return;
+    vm->interrupt_flags[int_no] = 1;
 }

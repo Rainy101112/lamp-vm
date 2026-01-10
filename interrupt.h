@@ -7,8 +7,8 @@
 #define VM_INTERRUPT_H
 void vm_handle_interrupts(VM *vm);
 void init_ivt(VM *vm);
-void register_isr(VM *vm, int int_no, int isr_ip);
-void trigger_interrupt(VM *vm, int int_no);
+void register_isr(VM *vm, uint32_t int_no, uint64_t isr_ip);
+void trigger_interrupt(VM *vm, uint32_t int_no);
 
 enum {
     INT_KEYBOARD = 0x00,

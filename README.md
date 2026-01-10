@@ -14,13 +14,13 @@ VM will panic if a bad instruction was executed, and a debug message will be pri
 
 ### Current Memory Mapping
 
-0x00000000 ──────────────────
+| Type       | Start Addr | End Addr   | Size   | Usage           |
+|------------|------------|------------|--------|-----------------|
+| IVT        | 0x000000   | 0x0007FF   | 2048 B | IVT, 8byte each |
+| CALL_STACK | 0x000800   | 0x0008FF   | 256 B  | Call Stack      |
+| DATA_STACK | 0x000900   | 0x0009FF   | 256 B  | Data Stack      |
+| PROGRAM    | 0x000A00   | Memory End | ~4 MB  | Program         |
 
-IVT (256 bytes)
-
-0x00000100 ──────────────────
-
-Program Code
 
 ...
 

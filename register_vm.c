@@ -6,10 +6,8 @@
 #include "vm.h"
 #include "io_devices/frame/frame.h"
 #include "stack.h"
-#include "instruction.h"
 #include "io.h"
 #include "panic.h"
-#include "io_devices/frame/frame.h"
 #include "loadbin.h"
 #include "interrupt.h"
 #include "memory.h"
@@ -68,21 +66,21 @@ void vm_instruction_case(VM *vm) {
             break;
         }
         case OP_PUSH: {
-            DATA_PUSH(vm, vm->regs[rd]);
+            data_push(vm, (uint8_t)vm->regs[rd]);
             break;
         }
         case OP_POP: {
-            vm->regs[rd] = DATA_POP(vm);
+            vm->regs[rd] = data_pop(vm);
             set_zf(vm, vm->regs[rd]);
             break;
         }
         case OP_CALL: {
-            CALL_PUSH(vm, vm->ip);
+            call_push(vm, vm->ip);
             vm->ip = imm;
             break;
         }
         case OP_RET: {
-            vm->ip = CALL_POP(vm);
+            vm->ip = call_pop(vm);
             break;
         }
         case OP_LOAD: {
@@ -156,18 +154,17 @@ void vm_instruction_case(VM *vm) {
             const uint32_t int_no = rd;
             if (int_no >= IVT_SIZE) break;
 
-            const vm_addr_t ivt_entry =
-                IVT_BASE + int_no * 8;
-
+            const vm_addr_t ivt_entry = IVT_BASE + int_no * 8;
             const uint64_t isr_ip = vm_read64(vm, ivt_entry);
 
-            CALL_PUSH(vm, vm->ip);
+            call_push(vm, vm->ip);
             vm->ip = isr_ip;
             vm->in_interrupt = 1;
             break;
         }
+
         case OP_IRET: {
-            vm->ip = CALL_POP(vm);
+            vm->ip = call_pop(vm);
             vm->in_interrupt = 0;
             break;
         }
@@ -260,7 +257,7 @@ int main() {
     /*
      *Disk
      */
-    /*
+
     uint64_t program[] = {
         INST(OP_MOVI, 2, 0, 0, 'H'), INST(OP_OUT, 2, SCREEN, 0, 0), INST(OP_MOVI, 2, 0, 0, 'e'),
         INST(OP_OUT, 2, SCREEN, 0, 0), INST(OP_MOVI, 2, 0, 0, 'l'), INST(OP_OUT, 2, SCREEN, 0, 0),
@@ -275,10 +272,11 @@ int main() {
     };
 
     size_t program_size = sizeof(program) / sizeof(program[0]);
-    */
+    /*
     const char* filename = "program";
     size_t program_size = 0;
     uint64_t* program = load_program(filename, &program_size);
+    */
     VM *vm = vm_create(MEM_SIZE, program, program_size);
     disk_init(vm, "./disk.img");
     init_ivt(vm);
