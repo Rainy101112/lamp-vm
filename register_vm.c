@@ -78,6 +78,13 @@ void vm_instruction_case(VM *vm) {
             set_zf(vm, vm->regs[rd]);
             break;
         }
+
+        case OP_MOD:
+            if (vm->regs[rs2] != 0)
+                vm->regs[rd] = vm->regs[rs1] % vm->regs[rs2];
+            else
+                vm->regs[rd] = 0;
+            break;
         case OP_CALL: {
             call_push(vm, vm->ip);
             vm->ip = imm;
@@ -182,6 +189,7 @@ void vm_instruction_case(VM *vm) {
         }
     }
 }
+
 void *vm_thread(void *arg) {
     VM *vm = arg;
     while (!vm->halted) {
@@ -192,6 +200,7 @@ void *vm_thread(void *arg) {
     }
     return NULL;
 }
+
 void display_loop(VM *vm) {
     vga_display_init();
     const int frame_delay = 16; // ~60FPS
@@ -202,6 +211,7 @@ void display_loop(VM *vm) {
     }
     display_shutdown();
 }
+
 void vm_run(VM *vm) {
     enable_raw_mode();
 
@@ -213,6 +223,7 @@ void vm_run(VM *vm) {
     pthread_join(thread_id, NULL);
     disable_raw_mode();
 }
+
 void vm_dump(VM *vm, int mem_preview) {
     printf("VM dump:\n");
     printf("Registers:\n");
@@ -271,9 +282,9 @@ VM *vm_create(size_t memory_size,
     }
 
     vm->fb = malloc(FB_SIZE);
-    printf("vm->fb = %p\n", (void*)vm->fb);
+    printf("vm->fb = %p\n", (void *) vm->fb);
     printf("fb_base = 0x%zx\n", fb_base);
-    printf("fb address mod 4 = %zu\n", ((size_t)vm->fb) % 4);
+    printf("fb address mod 4 = %zu\n", ((size_t) vm->fb) % 4);
 
     size_t prog_bytes = program_size * sizeof(uint64_t);
     if (PROGRAM_BASE + prog_bytes > memory_size) {
@@ -299,7 +310,7 @@ void vm_destroy(VM *vm) {
 
 int main() {
     /*
-     *Disk
+
      */
     uint64_t program[] = {
         INST(OP_MOVI, 0, 0, 0, FB_BASE(MEM_SIZE)),
@@ -310,14 +321,12 @@ int main() {
         INST(OP_STORE32, 1, 0, 2, 0),
         INST(OP_ADD, 2, 2, 7, 0),
         INST(OP_CMP, 2, 0, 0, FB_SIZE),
-        INST(OP_JZ, 0, 0, 0, PROGRAM_BASE + 8*8),
+        INST(OP_JZ, 0, 0, 0, PROGRAM_BASE + 9*8),
         INST(OP_JMP, 0, 0, 0, PROGRAM_BASE + 4*8),
 
         // HALT (index 8)
         INST(OP_HALT, 0, 0, 0, 0)
     };
-
-
 
     size_t program_size = sizeof(program) / sizeof(program[0]);
     /*

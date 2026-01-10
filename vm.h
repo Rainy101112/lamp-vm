@@ -100,7 +100,8 @@ enum {
     OP_IN,
     OP_OUT,
     OP_INT,
-    OP_IRET
+    OP_IRET,
+    OP_MOD
 };
 void vm_dump(VM *vm, int mem_preview);
 #endif
