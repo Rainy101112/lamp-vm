@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <SDL2/SDL_timer.h>
+#include <pthread.h>
 
 #include "fetch.h"
 #include "vm.h"
@@ -181,26 +182,37 @@ void vm_instruction_case(VM *vm) {
         }
     }
 }
-
-void vm_run(VM *vm) {
-    enable_raw_mode();
-    vga_display_init();
+void *vm_thread(void *arg) {
+    VM *vm = arg;
     while (!vm->halted) {
-        if (vm->panic) {
-            printf("VM panic detected.\n");
-            return;
-        }
+        if (vm->panic) return NULL;
         vm_handle_interrupts(vm);
         vm_instruction_case(vm);
+        vm_handle_keyboard(vm);
+    }
+    return NULL;
+}
+void display_loop(VM *vm) {
+    vga_display_init();
+    const int frame_delay = 16; // ~60FPS
+    while (!vm->halted) {
         display_poll_events(vm);
         display_update(vm);
-        vm_handle_keyboard(vm);
-
+        SDL_Delay(frame_delay);
     }
-    disable_raw_mode();
     display_shutdown();
 }
+void vm_run(VM *vm) {
+    enable_raw_mode();
 
+    pthread_t thread_id;
+    pthread_create(&thread_id, NULL, vm_thread, vm);
+
+    display_loop(vm);
+
+    pthread_join(thread_id, NULL);
+    disable_raw_mode();
+}
 void vm_dump(VM *vm, int mem_preview) {
     printf("VM dump:\n");
     printf("Registers:\n");
