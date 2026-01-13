@@ -10,6 +10,10 @@
 
 #include <unistd.h>
 
+#include "../../memory.h"
+
+#include "../../interrupt.h"
+
 void disk_init(VM *vm, const char *path) {
     printf("cwd: %s\n", getcwd(NULL, 0));
 
@@ -41,26 +45,60 @@ void disk_init(VM *vm, const char *path) {
 }
 
 void disk_read(VM *vm) {
+    size_t addr = vm->disk.mem_addr;
     fseek(vm->disk.fp, vm->disk.lba * DISK_SECTOR_SIZE, SEEK_SET);
-    fread(&vm->memory[vm->disk.mem_addr], DISK_SECTOR_SIZE, vm->disk.count, vm->disk.fp);
+
+    uint8_t buf[DISK_SIZE];
+    fread(buf, 1, DISK_SECTOR_SIZE * vm->disk.count, vm->disk.fp);
+
+    for (size_t i = 0; i < vm->disk.count * DISK_SECTOR_SIZE; i++) {
+        vm_write8(vm, addr + i, buf[i]);
+    }
 }
 
 void disk_write(const VM *vm) {
+    size_t addr = vm->disk.mem_addr;
     fseek(vm->disk.fp, vm->disk.lba * DISK_SECTOR_SIZE, SEEK_SET);
-    fwrite(&vm->memory[vm->disk.mem_addr], DISK_SECTOR_SIZE, vm->disk.count, vm->disk.fp);
-    fflush(vm->disk.fp);
-    const int fd = fileno(vm->disk.fp);
-    if (fd >= 0) {
-        fsync(fd);
+
+    uint8_t buf[DISK_SECTOR_SIZE * vm->disk.count];
+    for (size_t i = 0; i < vm->disk.count * DISK_SECTOR_SIZE; i++) {
+        buf[i] = vm_read8(vm, addr + i);
     }
+
+    fwrite(buf, 1, vm->disk.count * DISK_SECTOR_SIZE, vm->disk.fp);
+    fflush(vm->disk.fp);
+    int fd = fileno(vm->disk.fp);
+    if (fd >= 0) fsync(fd);
 }
 
 void disk_cmd(VM *vm, const int value) {
-    disk_set_busy(vm);
-    if (value == DISK_CMD_READ) {
-        disk_read(vm);
-    } else if (value == DISK_CMD_WRITE) {
-        disk_write(vm);
-    }
-    disk_set_free(vm);
+    if (vm->disk.status == DISK_STATUS_BUSY)
+        return;
+
+    vm->disk.pending_cmd = value;
+    vm->disk.status = DISK_STATUS_BUSY;
 }
+void disk_tick(VM *vm) {
+    if (vm->disk.status != DISK_STATUS_BUSY)
+        return;
+
+    switch (vm->disk.pending_cmd) {
+        case DISK_CMD_READ:
+            fseek(vm->disk.fp, vm->disk.lba * DISK_SECTOR_SIZE, SEEK_SET);
+            fread(&vm->memory[vm->disk.mem_addr], DISK_SECTOR_SIZE, vm->disk.count, vm->disk.fp);
+            break;
+
+        case DISK_CMD_WRITE:
+            fseek(vm->disk.fp, vm->disk.lba * DISK_SECTOR_SIZE, SEEK_SET);
+            fwrite(&vm->memory[vm->disk.mem_addr], DISK_SECTOR_SIZE, vm->disk.count, vm->disk.fp);
+            fflush(vm->disk.fp);
+            fsync(fileno(vm->disk.fp));
+            break;
+    }
+
+    vm->disk.status = DISK_STATUS_FREE;
+    vm->disk.pending_cmd = 0;
+
+    trigger_interrupt(vm, INT_DISK_COMPLETE);
+}
+

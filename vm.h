@@ -43,10 +43,11 @@ typedef uint32_t vm_addr_t;
 
 typedef struct {
     FILE *fp;
-    int lba;
-    int mem_addr;
-    int count;
-    int status;
+    uint32_t lba;
+    uint32_t mem_addr;
+    uint32_t count;
+    uint8_t status;
+    int pending_cmd;
 } Disk;
 
 typedef struct {

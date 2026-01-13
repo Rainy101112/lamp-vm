@@ -313,6 +313,8 @@ void *vm_thread(void *arg) {
         vm_handle_interrupts(vm);
         vm_instruction_case(vm);
         vm_handle_keyboard(vm);
+
+        disk_tick(vm);
     }
     return NULL;
 }

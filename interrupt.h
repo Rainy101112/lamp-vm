@@ -13,5 +13,6 @@ void trigger_interrupt(VM *vm, uint32_t int_no);
 enum {
     INT_KEYBOARD = 0x00,
     INT_DIVIDE_BY_ZERO = 0x01,
+    INT_DISK_COMPLETE = 0x02
 } INT_ALIAS;
 #endif
