@@ -19,13 +19,46 @@
 
 const size_t MEM_SIZE = 1048576 * 4; // 4MB
 
-void set_zf(VM *vm, int value) {
-    if (value == 0) {
+void update_zf_sf(VM *vm, int32_t result) {
+    if (result == 0)
         vm->flags |= FLAG_ZF;
-    } else {
+    else
         vm->flags &= ~FLAG_ZF;
-    }
+
+    if (result < 0)
+        vm->flags |= FLAG_SF;
+    else
+        vm->flags &= ~FLAG_SF;
 }
+
+void update_add_flags(VM *vm, int32_t a, int32_t b, int32_t result) {
+    if ((uint32_t) a + (uint32_t) b < (uint32_t) a)
+        vm->flags |= FLAG_CF;
+    else
+        vm->flags &= ~FLAG_CF;
+
+    if (((a > 0 && b > 0 && result < 0) || (a < 0 && b < 0 && result > 0)))
+        vm->flags |= FLAG_OF;
+    else
+        vm->flags &= ~FLAG_OF;
+
+    update_zf_sf(vm, result);
+}
+
+void update_sub_flags(VM *vm, int32_t a, int32_t b, int32_t result) {
+    if ((uint32_t) a < (uint32_t) b)
+        vm->flags |= FLAG_CF;
+    else
+        vm->flags &= ~FLAG_CF;
+
+    if (((a > 0 && b < 0 && result < 0) || (a < 0 && b > 0 && result > 0)))
+        vm->flags |= FLAG_OF;
+    else
+        vm->flags &= ~FLAG_OF;
+
+    update_zf_sf(vm, result);
+}
+
 
 void vm_instruction_case(VM *vm) {
     uint8_t op, rd, rs1, rs2;
@@ -37,156 +70,238 @@ void vm_instruction_case(VM *vm) {
 #endif
 
     switch (op) {
-    case OP_ADD: {
-        vm->regs[rd] = vm->regs[rs1] + vm->regs[rs2];
-        set_zf(vm, vm->regs[rd]);
-        break;
-    }
-
-    case OP_SUB: {
-        vm->regs[rd] = vm->regs[rs1] - vm->regs[rs2];
-        set_zf(vm, vm->regs[rd]);
-        break;
-    }
-    case OP_MUL: {
-        vm->regs[rd] = vm->regs[rs1] * vm->regs[rs2];
-        set_zf(vm, vm->regs[rd]);
-        break;
-    }
-    case OP_HALT: {
-        flush_screen_final();
-        vm->halted = 1;
-        return;
-    }
-    case OP_JMP: {
-        vm->ip = imm;
-        break;
-    }
-    case OP_JZ: {
-        if (vm->flags & FLAG_ZF) {
-            vm->ip = imm;
-        }
-        break;
-    }
-    case OP_PUSH: {
-        data_push(vm, (uint8_t)vm->regs[rd]);
-        break;
-    }
-    case OP_POP: {
-        vm->regs[rd] = data_pop(vm);
-        set_zf(vm, vm->regs[rd]);
-        break;
-    }
-
-    case OP_MOD:
-        if (vm->regs[rs2] != 0)
-            vm->regs[rd] = vm->regs[rs1] % vm->regs[rs2];
-        else
-            vm->regs[rd] = 0;
-        break;
-    case OP_CALL: {
-        call_push(vm, vm->ip);
-        vm->ip = imm;
-        break;
-    }
-    case OP_RET: {
-        vm->ip = call_pop(vm);
-        break;
-    }
-    case OP_LOAD: {
-        const vm_addr_t addr = vm->regs[rs1] + imm;
-        vm->regs[rd] = vm_read8(vm, addr);
-        set_zf(vm, vm->regs[rd]);
-        break;
-    }
-    case OP_STORE: {
-        const vm_addr_t addr = vm->regs[rs1] + imm;
-        vm_write8(vm, addr, (uint8_t)vm->regs[rd]);
-        break;
-    }
-    case OP_STORE32: {
-        const vm_addr_t addr = vm->regs[rs1] + vm->regs[rs2] + imm;
-        vm_write32(vm, addr, (uint32_t)vm->regs[rd]);
-        break;
-    }
-    case OP_CMP: {
-        const int val1 = vm->regs[rd];
-        const int val2 = (imm != 0) ? imm : vm->regs[rs1];
-        set_zf(vm, val1 - val2);
-        break;
-    }
-    case OP_MOV: {
-        vm->regs[rd] = vm->regs[rs1];
-        set_zf(vm, vm->regs[rd]);
-        break;
-    }
-    case OP_MOVI: {
-        vm->regs[rd] = imm;
-        set_zf(vm, vm->regs[rd]);
-        break;
-    }
-    case OP_MEMSET: {
-        const uint32_t base = (uint32_t)vm->regs[rd];
-        const uint8_t value = (uint8_t)vm->regs[rs1];
-        const uint32_t count = (uint32_t)imm;
-
-        for (uint32_t i = 0; i < count; i++) {
-            vm_write8(vm, base + i, value);
-        }
-        break;
-    }
-    case OP_MEMCPY: {
-        const uint32_t dest = (uint32_t)vm->regs[rd];
-        const uint32_t src = (uint32_t)vm->regs[rs1];
-        const uint32_t count = (uint32_t)imm;
-
-        for (uint32_t i = 0; i < count; i++) {
-            uint8_t v = vm_read8(vm, src + i);
-            vm_write8(vm, dest + i, v);
-        }
-        break;
-    }
-    case OP_IN: {
-        const int addr = rs1;
-        if (addr >= 0 && addr < IO_SIZE) {
-            vm->regs[rd] = vm->io[addr];
-        } else {
-            panic(panic_format("IN invalid IO address %d", addr), vm);
-        }
-        break;
-    }
-    case OP_OUT: {
-        const int addr = rs1;
-        if (addr >= 0 && addr < IO_SIZE) {
-            accept_io(vm, addr, vm->regs[rd]);
-        } else {
-            panic(panic_format("OUT invalid IO address %d\n", addr), vm);
-        }
-        break;
-    }
-    case OP_INT: {
-        const uint32_t int_no = rd;
-        if (int_no >= IVT_SIZE)
+        case OP_ADD: {
+            const int32_t a = vm->regs[rs1];
+            const int32_t b = vm->regs[rs2];
+            const int32_t res = a + b;
+            vm->regs[rd] = res;
+            update_add_flags(vm, a, b, res);
             break;
+        }
 
-        const vm_addr_t ivt_entry = IVT_BASE + int_no * 8;
-        const uint64_t isr_ip = vm_read64(vm, ivt_entry);
+        case OP_SUB: {
+            int32_t a = vm->regs[rs1];
+            int32_t b = vm->regs[rs2];
+            int32_t res = a - b;
+            vm->regs[rd] = res;
+            update_sub_flags(vm, a, b, res);
+            break;
+        }
+        case OP_MUL: {
+            vm->regs[rd] = vm->regs[rs1] * vm->regs[rs2];
+            update_zf_sf(vm, vm->regs[rd]);
+            break;
+        }
+        case OP_HALT: {
+            flush_screen_final();
+            vm->halted = 1;
+            return;
+        }
+        case OP_JMP: {
+            vm->ip = imm;
+            break;
+        }
+        case OP_PUSH: {
+            data_push(vm, (uint8_t) vm->regs[rd]);
+            break;
+        }
+        case OP_POP: {
+            vm->regs[rd] = data_pop(vm);
+            update_zf_sf(vm, vm->regs[rd]);
+            break;
+        }
+        case OP_CALL: {
+            call_push(vm, vm->ip);
+            vm->ip = imm;
+            break;
+        }
+        case OP_RET: {
+            vm->ip = call_pop(vm);
+            break;
+        }
+        case OP_LOAD: {
+            const vm_addr_t addr = vm->regs[rs1] + imm;
+            vm->regs[rd] = vm_read8(vm, addr);
+            update_zf_sf(vm, vm->regs[rd]);
+            break;
+        }
+        case OP_STORE: {
+            const vm_addr_t addr = vm->regs[rs1] + imm;
+            vm_write8(vm, addr, (uint8_t) vm->regs[rd]);
+            break;
+        }
+        case OP_STORE32: {
+            const vm_addr_t addr = vm->regs[rs1] + vm->regs[rs2] + imm;
+            vm_write32(vm, addr, (uint32_t) vm->regs[rd]);
+            break;
+        }
+        case OP_CMP: {
+            const int32_t val1 = vm->regs[rd];
+            const int32_t val2 = (imm != 0) ? imm : vm->regs[rs1];
+            const int32_t res = val1 - val2;
+            update_sub_flags(vm, val1, val2, res);
+            break;
+        }
 
-        call_push(vm, vm->ip);
-        vm->ip = isr_ip;
-        vm->in_interrupt = 1;
-        break;
-    }
+        case OP_MOV: {
+            vm->regs[rd] = vm->regs[rs1];
+            update_zf_sf(vm, vm->regs[rd]);
+            break;
+        }
+        case OP_MOVI: {
+            vm->regs[rd] = imm;
+            update_zf_sf(vm, vm->regs[rd]);
+            break;
+        }
+        case OP_MEMSET: {
+            const uint32_t base = (uint32_t) vm->regs[rd];
+            const uint8_t value = (uint8_t) vm->regs[rs1];
+            const uint32_t count = (uint32_t) imm;
 
-    case OP_IRET: {
-        vm->ip = call_pop(vm);
-        vm->in_interrupt = 0;
-        break;
-    }
-    default: {
-        panic(panic_format("Unknown opcode %d\n", op), vm);
-        return;
-    }
+            for (uint32_t i = 0; i < count; i++) {
+                vm_write8(vm, base + i, value);
+            }
+            break;
+        }
+        case OP_MEMCPY: {
+            const uint32_t dest = (uint32_t) vm->regs[rd];
+            const uint32_t src = (uint32_t) vm->regs[rs1];
+            const uint32_t count = (uint32_t) imm;
+
+            for (uint32_t i = 0; i < count; i++) {
+                uint8_t v = vm_read8(vm, src + i);
+                vm_write8(vm, dest + i, v);
+            }
+            break;
+        }
+        case OP_IN: {
+            const int addr = rs1;
+            if (addr >= 0 && addr < IO_SIZE) {
+                vm->regs[rd] = vm->io[addr];
+            } else {
+                panic(panic_format("IN invalid IO address %d", addr), vm);
+            }
+            break;
+        }
+        case OP_OUT: {
+            const int addr = rs1;
+            if (addr >= 0 && addr < IO_SIZE) {
+                accept_io(vm, addr, vm->regs[rd]);
+            } else {
+                panic(panic_format("OUT invalid IO address %d\n", addr), vm);
+            }
+            break;
+        }
+        case OP_INT: {
+            const uint32_t int_no = rd;
+            if (int_no >= IVT_SIZE)
+                break;
+
+            const vm_addr_t ivt_entry = IVT_BASE + int_no * 8;
+            const uint64_t isr_ip = vm_read64(vm, ivt_entry);
+
+            call_push(vm, vm->ip);
+            vm->ip = isr_ip;
+            vm->in_interrupt = 1;
+            break;
+        }
+        case OP_IRET: {
+            vm->ip = call_pop(vm);
+            vm->in_interrupt = 0;
+            break;
+        }
+        case OP_AND: {
+            vm->regs[rd] = vm->regs[rs1] & vm->regs[rs2];
+            update_zf_sf(vm, vm->regs[rd]);
+            break;
+        }
+        case OP_OR: {
+            vm->regs[rd] = vm->regs[rs1] | vm->regs[rs2];
+            update_zf_sf(vm, vm->regs[rd]);
+            break;
+        }
+        case OP_XOR: {
+            vm->regs[rd] = vm->regs[rs1] ^ vm->regs[rs2];
+            update_zf_sf(vm, vm->regs[rd]);
+            break;
+        }
+        case OP_NOT: {
+            vm->regs[rd] = ~vm->regs[rs1];
+            update_zf_sf(vm, vm->regs[rd]);
+            break;
+        }
+        case OP_SHL: {
+            vm->regs[rd] = vm->regs[rs1] << imm;
+            update_zf_sf(vm, vm->regs[rd]);
+            break;
+        }
+        case OP_SHR: {
+            vm->regs[rd] = vm->regs[rs1] >> imm;
+            update_zf_sf(vm, vm->regs[rd]);
+            break;
+        }
+        case OP_DIV: {
+            if (vm->regs[rs2] != 0) {
+                vm->regs[rd] = vm->regs[rs1] / vm->regs[rs2];
+                update_zf_sf(vm, vm->regs[rd]);
+            } else {
+                trigger_interrupt(vm, INT_DIVIDE_BY_ZERO);
+            }
+
+            break;
+        }
+        case OP_MOD: {
+            if (vm->regs[rs2] != 0)
+                vm->regs[rd] = vm->regs[rs1] % vm->regs[rs2];
+            else
+                trigger_interrupt(vm, INT_DIVIDE_BY_ZERO);
+            break;
+        }
+        case OP_JZ: {
+            if (vm->flags & FLAG_ZF) {
+                vm->ip = imm;
+            }
+            break;
+        }
+        case OP_JNZ: {
+            if (!(vm->flags & FLAG_ZF)) {
+                vm->ip = imm;
+            }
+            break;
+        }
+        case OP_JG: {
+            if (!(vm->flags & FLAG_ZF) && ((vm->flags & FLAG_SF) == (vm->flags & FLAG_OF))) {
+                vm->ip = imm;
+            }
+            break;
+        }
+        case OP_JGE: {
+            if ((vm->flags & FLAG_SF) == (vm->flags & FLAG_OF)) {
+                vm->ip = imm;
+            }
+            break;
+        }
+        case OP_JLE: {
+            if ((vm->flags & FLAG_ZF) || (vm->flags & FLAG_SF) != (vm->flags & FLAG_OF)) {
+                vm->ip = imm;
+            }
+            break;
+        }
+        case OP_JC: {
+            if (vm->flags & FLAG_CF) {
+                vm->ip = imm;
+            }
+            break;
+        }
+        case OP_JNC: {
+            if (!(vm->flags & FLAG_CF)) {
+                vm->ip = imm;
+            }
+        }
+        default: {
+            panic(panic_format("Unknown opcode %d\n", op), vm);
+            return;
+        }
     }
 }
 
@@ -206,8 +321,13 @@ void display_loop(VM *vm) {
     vga_display_init();
     const int frame_delay = 16; // ~60FPS
     while (!vm->halted) {
+        uint32_t frame_start = SDL_GetTicks();
         display_poll_events(vm);
         display_update(vm);
+        uint32_t frame_time = SDL_GetTicks() - frame_start;
+        if (frame_time < frame_delay) {
+            SDL_Delay(frame_delay - frame_time);
+        }
         SDL_Delay(frame_delay);
     }
     display_shutdown();
@@ -225,7 +345,7 @@ void vm_run(VM *vm) {
     disable_raw_mode();
 }
 
-void vm_dump(VM *vm, int mem_preview) {
+void vm_dump(const VM *vm, int mem_preview) {
     printf("VM dump:\n");
     printf("Registers:\n");
     for (int i = 0; i < REG_COUNT; i++) {
@@ -282,9 +402,9 @@ VM *vm_create(size_t memory_size, const uint64_t *program, size_t program_size) 
     }
 
     vm->fb = malloc(FB_SIZE);
-    printf("vm->fb = %p\n", (void *)vm->fb);
+    printf("vm->fb = %p\n", (void *) vm->fb);
     printf("fb_base = 0x%zx\n", fb_base);
-    printf("fb address mod 4 = %zu\n", ((size_t)vm->fb) % 4);
+    printf("fb address mod 4 = %zu\n", ((size_t) vm->fb) % 4);
 
     size_t prog_bytes = program_size * sizeof(uint64_t);
     if (PROGRAM_BASE + prog_bytes > memory_size) {
@@ -313,19 +433,21 @@ int main() {
     /*
 
      */
-    uint64_t program[] = {INST(OP_MOVI, 0, 0, 0, FB_BASE(MEM_SIZE)),
-                          INST(OP_MOVI, 1, 0, 0, 0x474A43),
-                          INST(OP_MOVI, 2, 0, 0, 0),
-                          INST(OP_MOVI, 7, 0, 0, 4),
-                          // LOOP_START (index 4)
-                          INST(OP_STORE32, 1, 0, 2, 0),
-                          INST(OP_ADD, 2, 2, 7, 0),
-                          INST(OP_CMP, 2, 0, 0, FB_SIZE),
-                          INST(OP_JZ, 0, 0, 0, PROGRAM_BASE + 9 * 8),
-                          INST(OP_JMP, 0, 0, 0, PROGRAM_BASE + 4 * 8),
+    uint64_t program[] = {
+        INST(OP_MOVI, 0, 0, 0, FB_BASE(MEM_SIZE)),
+        INST(OP_MOVI, 1, 0, 0, 0x474A43),
+        INST(OP_MOVI, 2, 0, 0, 0),
+        INST(OP_MOVI, 7, 0, 0, 4),
+        // LOOP_START (index 4)
+        INST(OP_STORE32, 1, 0, 2, 0),
+        INST(OP_ADD, 2, 2, 7, 0),
+        INST(OP_CMP, 2, 0, 0, FB_SIZE),
+        INST(OP_JZ, 0, 0, 0, PROGRAM_BASE + 9 * 8),
+        INST(OP_JMP, 0, 0, 0, PROGRAM_BASE + 4 * 8),
 
-                          // HALT (index 8)
-                          INST(OP_HALT, 0, 0, 0, 0)};
+        // HALT (index 8)
+        INST(OP_HALT, 0, 0, 0, 0)
+    };
 
     size_t program_size = sizeof(program) / sizeof(program[0]);
     /*
@@ -341,7 +463,7 @@ int main() {
            CALL_STACK_SIZE,
            DATA_STACK_SIZE,
            MEM_SIZE,
-           (void *)vm->memory);
+           (void *) vm->memory);
     init_screen();
     vm_run(vm);
 #ifdef DBEUG

@@ -17,7 +17,13 @@ static inline uint64_t INST(uint8_t op, uint8_t rd, uint8_t rs1, uint8_t rs2, ui
 #define FB_BPP 4
 #define FB_SIZE (FB_WIDTH * FB_HEIGHT * FB_BPP)
 
-#define FLAG_ZF 1
+#define FLAG_CF 0x01
+#define FLAG_PF 0x02
+#define FLAG_AF 0x04
+#define FLAG_ZF 0x08
+#define FLAG_SF 0x10
+#define FLAG_OF 0x20
+
 #define IO_SIZE 256
 
 #define REG_COUNT 8
@@ -44,7 +50,7 @@ typedef struct {
 } Disk;
 
 typedef struct {
-    int regs[REG_COUNT];
+    int32_t regs[REG_COUNT];
     uint64_t *code;
     size_t ip;
     size_t execution_times;
@@ -77,6 +83,7 @@ enum {
     OP_ADD = 1,
     OP_SUB,
     OP_MUL,
+    OP_DIV,
     OP_HALT,
     OP_JMP,
     OP_JZ,
@@ -96,7 +103,21 @@ enum {
     OP_OUT,
     OP_INT,
     OP_IRET,
-    OP_MOD
+    OP_MOD,
+    OP_AND,
+    OP_OR,
+    OP_XOR,
+    OP_NOT,
+    OP_SHL,
+    OP_SHR,
+    OP_SAR,
+    OP_JNZ,
+    OP_JG,
+    OP_JGE,
+    OP_JL,
+    OP_JLE,
+    OP_JC,
+    OP_JNC
 };
-void vm_dump(VM *vm, int mem_preview);
+void vm_dump(const VM *vm, int mem_preview);
 #endif
