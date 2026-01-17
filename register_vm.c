@@ -137,12 +137,18 @@ void vm_instruction_case(VM *vm) {
         }
         case OP_CMP: {
             const int32_t val1 = vm->regs[rd];
-            const int32_t val2 = (imm != 0) ? imm : vm->regs[rs1];
+            const int32_t val2 = vm->regs[rs1];
             const int32_t res = val1 - val2;
             update_sub_flags(vm, val1, val2, res);
             break;
         }
-
+        case OP_CMPI: {
+            const int32_t val1 = vm->regs[rd];
+            const int32_t val2 = imm;
+            const int32_t res = val1 - val2;
+            update_sub_flags(vm, val1, val2, res);
+            break;
+        }
         case OP_MOV: {
             vm->regs[rd] = vm->regs[rs1];
             update_zf_sf(vm, vm->regs[rd]);
@@ -175,7 +181,7 @@ void vm_instruction_case(VM *vm) {
             break;
         }
         case OP_IN: {
-            const int addr = rs1;
+            const int addr = vm->regs[rs1];
             if (addr >= 0 && addr < IO_SIZE) {
                 vm->regs[rd] = vm->io[addr];
             } else {
@@ -184,7 +190,7 @@ void vm_instruction_case(VM *vm) {
             break;
         }
         case OP_OUT: {
-            const int addr = rs1;
+            const int addr = vm->regs[rs1];
             if (addr >= 0 && addr < IO_SIZE) {
                 accept_io(vm, addr, vm->regs[rd]);
             } else {
@@ -193,7 +199,7 @@ void vm_instruction_case(VM *vm) {
             break;
         }
         case OP_INT: {
-            const uint32_t int_no = rd;
+            const uint32_t int_no = vm->regs[rd];
             if (int_no >= IVT_SIZE)
                 break;
 

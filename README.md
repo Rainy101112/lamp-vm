@@ -2,11 +2,13 @@
 
 ## Compile
 
-Use Cmake VERSION > 4.1.
+The project's Cmake file is currently forced to compile in aarch64 mode since I am using a Macbook, some changes must be
+done if you want to compile it by yourself.
 
 ## Features
 
-Basic program should be generated using [Assembler](https://github.com/glowingstone124/lampvm_assembler) and be placed at the working directory.
+I am currently working on a assembler writing in Rust to provide a better environment for developing softwares on this
+platform.
 
 ### Panic
 
@@ -14,29 +16,33 @@ VM will panic if a bad instruction was executed, and a debug message will be pri
 
 ### Current Memory Mapping
 
-| Type       | Start Addr | End Addr   | Size   | Usage           |
-|------------|------------|------------|--------|-----------------|
-| IVT        | 0x000000   | 0x0007FF   | 2048 B | IVT, 8byte each |
-| CALL_STACK | 0x000800   | 0x0008FF   | 256 B  | Call Stack      |
-| DATA_STACK | 0x000900   | 0x0009FF   | 256 B  | Data Stack      |
-| PROGRAM    | 0x000A00   | Memory End | ~4 MB  | Program         |
-
+| Type        | Start Addr                 | End Addr   | Size                   | Usage           |
+|-------------|----------------------------|------------|------------------------|-----------------|
+| IVT         | 0x000000                   | 0x0007FF   | 2048 B                 | IVT, 8byte each |
+| CALL_STACK  | 0x000800                   | 0x0008FF   | 256 B                  | Call Stack      |
+| DATA_STACK  | 0x000900                   | 0x0009FF   | 256 B                  | Data Stack      |
+| PROGRAM     | 0x000A00                   | FB start   | ~4 MB                  | Program         |
+| FrameBuffer | Memory End - 800 * 600 * 4 | Memory End | depends on screen size | FrameBuffer     |
 
 ...
 
 ### Interrupt Tables(IVT) Mapping
 
-In default, LampVM supports 256 interrupt ids. This vector starts at memory address 0x0, since memory is actually a segment on heap space.
+In default, LampVM supports 256 interrupt ids. This vector starts at memory address 0x0, since memory is actually a
+segment on heap space.
 
-Keyboard Input now has the highest priority, it's located on 0x00. Edit 0x00 first in your program to configure the address handling Keyboard Interrupt.
+Keyboard Input now has the highest priority, it's located on 0x00. Edit 0x00 first in your program to configure the
+address handling Keyboard Interrupt.
 
 ## Roadmap
 
+Write Wiki
+
 Implements a standard VGA-like screen.
 
-Implements a virtual harddisk
+Implements a virtual hard disk.
 
-Isolate assembly instructions into separate files.
+Create a assembler and make a subset of C.
 
 ## Instructions
 

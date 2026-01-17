@@ -96,6 +96,7 @@ enum {
     OP_STORE,
     OP_STORE32,
     OP_CMP,
+    OP_CMPI,
     OP_MOV,
     OP_MOVI,
     OP_MEMSET,
