@@ -440,7 +440,7 @@ void vm_destroy(VM *vm) {
 int main() {
     /*
 
-     */
+
     uint64_t program[] = {
         INST(OP_MOVI, 0, 0, 0, FB_BASE(MEM_SIZE)),
         INST(OP_MOVI, 1, 0, 0, 0x474A43),
@@ -449,7 +449,7 @@ int main() {
         // LOOP_START (index 4)
         INST(OP_STORE32, 1, 0, 2, 0),
         INST(OP_ADD, 2, 2, 7, 0),
-        INST(OP_CMP, 2, 0, 0, FB_SIZE),
+        INST(OP_CMPI, 2, 0, 0, FB_SIZE),
         INST(OP_JZ, 0, 0, 0, PROGRAM_BASE + 9 * 8),
         INST(OP_JMP, 0, 0, 0, PROGRAM_BASE + 4 * 8),
 
@@ -458,11 +458,14 @@ int main() {
     };
 
     size_t program_size = sizeof(program) / sizeof(program[0]);
-    /*
-    const char* filename = "program";
+    */
+
+    const char* filename = "program.bin";
     size_t program_size = 0;
     uint64_t* program = load_program(filename, &program_size);
-    */
+    if (program) {
+        printf("Loaded program from %s, %zu instructions.\n", filename, program_size);
+    }
     VM *vm = vm_create(MEM_SIZE, program, program_size);
     disk_init(vm, "./disk.img");
     init_ivt(vm);
