@@ -15,13 +15,14 @@ VM will panic if a bad instruction was executed, and a debug message will be pri
 
 ### Current Memory Mapping
 
-| Type        | Start Addr                 | End Addr   | Size                   | Usage           |
-|-------------|----------------------------|------------|------------------------|-----------------|
-| IVT         | 0x000000                   | 0x0007FF   | 2048 B                 | IVT, 8byte each |
-| CALL_STACK  | 0x000800                   | 0x0008FF   | 256 B                  | Call Stack      |
-| DATA_STACK  | 0x000900                   | 0x0009FF   | 256 B                  | Data Stack      |
-| PROGRAM     | 0x000A00                   | FB start   | ~4 MB                  | Program         |
-| FrameBuffer | Memory End - 800 * 600 * 4 | Memory End | depends on screen size | FrameBuffer     |
+| Type        | Start Addr        | End Addr    | Size    | Usage                   |
+|-------------|-------------------|-------------|---------|-------------------------|
+| IVT         | 0x000000          | 0x0007FF    | 2048 B  | IVT, 8B each            |
+| CALL_STACK  | 0x000800          | 0x000FFF    | 2048 B  | Call Stack              |
+| DATA_STACK  | 0x001000          | 0x0017FF    | 2048 B  | Data Stack              |
+| Timedate    | 0x001800          | 0x001817    | 28 B    | Time (3×u64 + control ) |
+| PROGRAM     | 0x001818          | FB start    | ~4 MB   | Program                 |
+| FrameBuffer | MEM_END - FB_SIZE | MEM_END - 1 | depends | FrameBuffer             |
 
 ...
 

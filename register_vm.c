@@ -16,7 +16,7 @@
 #include "memory.h"
 #include "io_devices/disk/disk.h"
 #include "io_devices/vga_display/display.h"
-
+#include "io_devices/vga_display/mmio_register.h"
 const size_t MEM_SIZE = 1048576 * 4; // 4MB
 
 void update_zf_sf(VM *vm, int32_t result) {
@@ -68,7 +68,6 @@ void vm_instruction_case(VM *vm) {
 #ifdef DEBUG
     printf("IP=%lu, executing opcode=%d\n", vm->ip, op);
 #endif
-
     switch (op) {
         case OP_ADD: {
             const int32_t a = vm->regs[rs1];
@@ -121,7 +120,19 @@ void vm_instruction_case(VM *vm) {
         }
         case OP_LOAD: {
             const vm_addr_t addr = vm->regs[rs1] + imm;
-            vm->regs[rd] = vm_read8(vm, addr);
+            vm->regs[rd] = (uint32_t)vm_read8(vm, addr);
+            update_zf_sf(vm, vm->regs[rd]);
+            break;
+        }
+        case OP_LOAD32: {
+            const vm_addr_t addr = vm->regs[rs1] + imm;
+            vm->regs[rd] = vm_read32(vm, addr);
+            update_zf_sf(vm, vm->regs[rd]);
+            break;
+        }
+        case OP_LOADX32: {
+            const vm_addr_t addr = vm->regs[rs1] + vm->regs[rs2] + imm;
+            vm->regs[rd] = vm_read32(vm, addr);
             update_zf_sf(vm, vm->regs[rd]);
             break;
         }
@@ -131,6 +142,11 @@ void vm_instruction_case(VM *vm) {
             break;
         }
         case OP_STORE32: {
+            const vm_addr_t addr = vm->regs[rs1] + imm;
+            vm_write32(vm, addr, (uint32_t) vm->regs[rd]);
+            break;
+        }
+        case OP_STOREX32: {
             const vm_addr_t addr = vm->regs[rs1] + vm->regs[rs2] + imm;
             vm_write32(vm, addr, (uint32_t) vm->regs[rd]);
             break;
@@ -319,7 +335,6 @@ void *vm_thread(void *arg) {
         vm_handle_interrupts(vm);
         vm_instruction_case(vm);
         vm_handle_keyboard(vm);
-
         disk_tick(vm);
     }
     return NULL;
@@ -395,7 +410,6 @@ VM *vm_create(size_t memory_size, const uint64_t *program, size_t program_size) 
         free(vm);
         return NULL;
     }
-
     memset(vm->memory, 0, memory_size);
 
     if (memory_size < FB_SIZE) {
@@ -414,6 +428,11 @@ VM *vm_create(size_t memory_size, const uint64_t *program, size_t program_size) 
     printf("fb_base = 0x%zx\n", fb_base);
     printf("fb address mod 4 = %zu\n", ((size_t) vm->fb) % 4);
 
+    printf("Initializing MMIO.... \n");
+    vm->mmio_count = 0;
+    memset(vm->mmio_devices, 0, sizeof(vm->mmio_devices));
+    register_fb_mmio(vm);
+
     size_t prog_bytes = program_size * sizeof(uint64_t);
     if (PROGRAM_BASE + prog_bytes > memory_size) {
         panic("Program too large\n", vm);
@@ -426,6 +445,10 @@ VM *vm_create(size_t memory_size, const uint64_t *program, size_t program_size) 
     vm->csp = CALL_STACK_SIZE;
     vm->dsp = DATA_STACK_SIZE;
 
+    vm->start_realtime_ns = host_unix_time_ns();
+    vm->start_monotonic_ns = host_monotonic_time_ns();
+    vm->suspend_accum_ns = 0;
+    vm->suspend_count = 0;
     return vm;
 }
 

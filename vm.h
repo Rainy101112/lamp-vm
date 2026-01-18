@@ -7,10 +7,13 @@
 #define VM_VM_H
 #include <stdint.h>
 #include <stdio.h>
+#include <time.h>
 static inline uint64_t INST(uint8_t op, uint8_t rd, uint8_t rs1, uint8_t rs2, uint32_t imm) {
     return ((uint64_t)op << 56 | (uint64_t)rd << 48 | (uint64_t)rs1 << 40 | (uint64_t)rs2 << 32) |
         imm;
 }
+typedef struct VM VM;
+#define MAX_MMIO_DEVICES 16
 
 #define FB_WIDTH 640
 #define FB_HEIGHT 480
@@ -34,10 +37,15 @@ static inline uint64_t INST(uint8_t op, uint8_t rd, uint8_t rs1, uint8_t rs2, ui
 #define CALL_STACK_SIZE 256
 #define DATA_STACK_SIZE 256
 
+#define TIME_REALTIME_OFFSET   0
+#define TIME_MONOTONIC_OFFSET  8
+#define TIME_BOOTTIME_OFFSET   16
+
 #define IVT_BASE 0x0000
 #define CALL_STACK_BASE (IVT_BASE + IVT_SIZE * IVT_ENTRY_SIZE)
 #define DATA_STACK_BASE (CALL_STACK_BASE + CALL_STACK_SIZE * 8)
-#define PROGRAM_BASE (DATA_STACK_BASE + DATA_STACK_SIZE * 8)
+#define TIME_BASE (DATA_STACK_BASE + DATA_STACK_SIZE * 8)
+#define PROGRAM_BASE (TIME_BASE + 24)
 #define FB_BASE(addr_space_size) ((addr_space_size) - FB_SIZE)
 typedef uint32_t vm_addr_t;
 
@@ -49,9 +57,16 @@ typedef struct {
     uint8_t status;
     int pending_cmd;
 } Disk;
-
+typedef uint32_t (*mmio_read32_fn)(VM *vm, uint32_t addr);
+typedef void (*mmio_write32_fn)(VM *vm, uint32_t addr, uint32_t val);
 typedef struct {
-    int32_t regs[REG_COUNT];
+    uint32_t start;
+    uint32_t end;
+    mmio_read32_fn read32;
+    mmio_write32_fn write32;
+} MMIO_Device;
+struct VM{
+    uint32_t regs[REG_COUNT];
     uint64_t *code;
     size_t ip;
     size_t execution_times;
@@ -67,6 +82,7 @@ typedef struct {
 
     uint8_t *memory;
     size_t memory_size;
+
     /*
      * framebuffer targets to a segment in our memory
      * [fb_base, fb_base + FB_SIZE)
@@ -79,7 +95,16 @@ typedef struct {
 
     int interrupt_flags[IVT_SIZE];
     int in_interrupt;
-} VM;
+
+    uint64_t start_realtime_ns;
+    uint64_t start_monotonic_ns;
+    uint64_t suspend_accum_ns;
+
+    int suspend_count;
+
+    MMIO_Device *mmio_devices[MAX_MMIO_DEVICES];
+    int mmio_count;
+};
 enum {
     OP_ADD = 1,
     OP_SUB,
@@ -93,8 +118,11 @@ enum {
     OP_CALL,
     OP_RET,
     OP_LOAD,
+    OP_LOAD32,
+    OP_LOADX32,
     OP_STORE,
     OP_STORE32,
+    OP_STOREX32,
     OP_CMP,
     OP_CMPI,
     OP_MOV,
@@ -121,5 +149,18 @@ enum {
     OP_JC,
     OP_JNC
 };
+
 void vm_dump(const VM *vm, int mem_preview);
+
+static inline uint64_t host_unix_time_ns(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    return (uint64_t)ts.tv_sec * 1000000000ull + ts.tv_nsec;
+}
+static inline uint64_t host_monotonic_time_ns(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000000ull + ts.tv_nsec;
+}
+
 #endif

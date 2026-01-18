@@ -21,18 +21,18 @@ int vga_display_init(void) {
 }
 
 void display_update(VM *vm) {
-    printf("first 16 pixels:");
-    for (int i = 0; i < 16; i++) {
-        printf(" %08x", ((uint32_t *)vm->fb)[i]);
-    }
-    printf("\n");
+    //printf("first 16 pixels:");
+    //for (int i = 0; i < 16; i++) {
+    //    printf(" %08x", ((uint32_t *)vm->fb)[i]);
+    //}
+    //printf("\n");
 
-    printf("flushing texture, first pixel = %08x\n", ((uint32_t *)vm->fb)[0]);
+    //printf("flushing texture, first pixel = %08x\n", ((uint32_t *)vm->fb)[0]);
     SDL_UpdateTexture(texture, NULL, vm->fb, FB_WIDTH * FB_BPP);
     SDL_RenderClear(renderer);
     SDL_RenderCopy(renderer, texture, NULL, NULL);
     SDL_RenderPresent(renderer);
-    printf("flushed\n");
+    //printf("flushed\n");
 }
 
 void display_poll_events(VM *vm) {

@@ -11,6 +11,5 @@ enum IO_TABLE {
     DISK_MEM = 0x12,
     DISK_COUNT = 0x13,
     DISK_STATUS = 0x14,
-
 };
 #endif

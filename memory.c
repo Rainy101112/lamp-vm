@@ -5,6 +5,7 @@
 
 #include <string.h>
 
+#include "mmio.h"
 #include "panic.h"
 #include "vm.h"
 
@@ -21,6 +22,11 @@ uint8_t vm_read8(VM *vm, vm_addr_t addr) {
 }
 
 uint32_t vm_read32(VM *vm, vm_addr_t addr) {
+    MMIO_Device *dev = find_mmio(vm, addr);
+    if (dev) {
+        return vm_mmio_read32(vm, addr);
+    }
+
     if (!in_ram(vm, addr, 4)) {
         panic(panic_format("READ32 out of bounds: 0x%08x", addr), vm);
         return 0;
@@ -57,14 +63,11 @@ void vm_write8(VM *vm, vm_addr_t addr, uint8_t value) {
 }
 
 void vm_write32(VM *vm, vm_addr_t addr, uint32_t value) {
-    size_t fb_base = FB_BASE(vm->memory_size);
-    if (addr >= fb_base && addr + 3 < fb_base + FB_SIZE) {
-        size_t pixel_index = (addr - fb_base) / 4;
-        vm->fb[pixel_index] = value;
-
+    MMIO_Device *dev = find_mmio(vm, addr);
+    if (dev && dev->write32) {
+        dev->write32(vm, addr, value);
         return;
     }
-
     if (!in_ram(vm, addr, 4)) {
         panic(panic_format("WRITE32 out of bounds: 0x%08x", addr), vm);
         return;
