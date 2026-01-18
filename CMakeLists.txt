@@ -29,8 +29,10 @@ add_executable(vm
         io_devices/vga_display/display.h
         mmio.h
         mmio.c
-        io_devices/vga_display/mmio_register.c
-        io_devices/vga_display/mmio_register.h
+        io_devices/vga_display/vga_mmio_register.c
+        io_devices/vga_display/vga_mmio_register.h
+        io_devices/time/time_mmio_register.c
+        io_devices/time/time_mmio_register.h
 )
 target_include_directories(vm PRIVATE ${SDL2_INCLUDE_DIRS})
 target_link_libraries(vm PRIVATE ${SDL2_LIBRARIES})

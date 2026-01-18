@@ -15,8 +15,9 @@
 #include "interrupt.h"
 #include "memory.h"
 #include "io_devices/disk/disk.h"
+#include "io_devices/time/time_mmio_register.h"
 #include "io_devices/vga_display/display.h"
-#include "io_devices/vga_display/mmio_register.h"
+#include "io_devices/vga_display/vga_mmio_register.h"
 const size_t MEM_SIZE = 1048576 * 4; // 4MB
 
 void update_zf_sf(VM *vm, int32_t result) {
@@ -65,9 +66,8 @@ void vm_instruction_case(VM *vm) {
     int32_t imm;
     FETCH64(vm, op, rd, rs1, rs2, imm);
     vm->execution_times++;
-#ifdef DEBUG
-    printf("IP=%lu, executing opcode=%d\n", vm->ip, op);
-#endif
+    //printf("IP=%lu, executing opcode=%d\n", vm->ip, op);
+    //printf("0x%08x,0x%08x,0x%08x,0x%08x\n", rd,rs1,rs2,imm);
     switch (op) {
         case OP_ADD: {
             const int32_t a = vm->regs[rs1];
@@ -432,7 +432,7 @@ VM *vm_create(size_t memory_size, const uint64_t *program, size_t program_size) 
     vm->mmio_count = 0;
     memset(vm->mmio_devices, 0, sizeof(vm->mmio_devices));
     register_fb_mmio(vm);
-
+    register_time_mmio(vm);
     size_t prog_bytes = program_size * sizeof(uint64_t);
     if (PROGRAM_BASE + prog_bytes > memory_size) {
         panic("Program too large\n", vm);
@@ -447,7 +447,6 @@ VM *vm_create(size_t memory_size, const uint64_t *program, size_t program_size) 
 
     vm->start_realtime_ns = host_unix_time_ns();
     vm->start_monotonic_ns = host_monotonic_time_ns();
-    vm->suspend_accum_ns = 0;
     vm->suspend_count = 0;
     return vm;
 }

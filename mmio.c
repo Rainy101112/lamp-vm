@@ -21,6 +21,5 @@ void vm_mmio_write32(VM *vm, uint32_t addr, uint32_t val) {
         panic(panic_format("WRITE32 invalid MMIO at 0x%08x", addr),vm);
         return;
     }
-    printf("write32");
     dev->write32(vm,addr,val);
 }

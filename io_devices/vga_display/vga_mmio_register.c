@@ -2,7 +2,7 @@
 // Created by Max Wang on 2026/1/18.
 //
 
-#include "mmio_register.h"
+#include "vga_mmio_register.h"
 
 uint32_t fb_read32(VM *vm, uint32_t addr) {
     size_t fb_base = FB_BASE(vm->memory_size);
@@ -13,6 +13,7 @@ uint32_t fb_read32(VM *vm, uint32_t addr) {
 void fb_write32(VM *vm, uint32_t addr, uint32_t value) {
     size_t fb_base = FB_BASE(vm->memory_size);
     size_t pixel_index = (addr - fb_base) / 4;
+    printf("Writing to MMIO ID %d\n", vm->mmio_count);
     vm->fb[pixel_index] = value;
 }
 
@@ -23,5 +24,5 @@ void register_fb_mmio(VM *vm) {
     fb_dev.read32 = fb_read32;
     fb_dev.write32 = fb_write32;
     vm->mmio_devices[vm->mmio_count++] = &fb_dev;
-    printf("Registered VM Screen to MMIO ID %d", vm->mmio_count);
+    printf("Registered VM Screen to MMIO ID %d\n", vm->mmio_count);
 }

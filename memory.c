@@ -63,6 +63,9 @@ void vm_write8(VM *vm, vm_addr_t addr, uint8_t value) {
 }
 
 void vm_write32(VM *vm, vm_addr_t addr, uint32_t value) {
+    if (addr >= 0x1000) {
+        printf("DEBUG WRITE: addr=0x%08x, val=0x%08x\n", addr, value);
+    }
     MMIO_Device *dev = find_mmio(vm, addr);
     if (dev && dev->write32) {
         dev->write32(vm, addr, value);

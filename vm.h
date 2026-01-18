@@ -98,12 +98,15 @@ struct VM{
 
     uint64_t start_realtime_ns;
     uint64_t start_monotonic_ns;
-    uint64_t suspend_accum_ns;
+    uint64_t latched_realtime;
+    uint64_t latched_monotonic;
+    uint64_t latched_boottime;
 
     int suspend_count;
 
     MMIO_Device *mmio_devices[MAX_MMIO_DEVICES];
     int mmio_count;
+
 };
 enum {
     OP_ADD = 1,
@@ -162,5 +165,4 @@ static inline uint64_t host_monotonic_time_ns(void) {
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint64_t)ts.tv_sec * 1000000000ull + ts.tv_nsec;
 }
-
 #endif
