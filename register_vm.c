@@ -454,6 +454,7 @@ VM *vm_create(size_t memory_size, const uint64_t *program, size_t program_size) 
 void vm_destroy(VM *vm) {
     if (!vm)
         return;
+    disk_close(vm);
     if (vm->memory)
         free(vm->memory);
     free(vm);

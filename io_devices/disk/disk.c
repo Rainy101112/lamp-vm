@@ -4,6 +4,7 @@
 #include "../../vm.h"
 #include "disk.h"
 
+#include <pthread.h>
 #include <stdlib.h>
 
 #include "../../panic.h"
@@ -14,34 +15,102 @@
 
 #include "../../interrupt.h"
 
+static int is_valid_dma(VM *vm, size_t addr, size_t count) {
+    if (addr + (count * DISK_SECTOR_SIZE) > vm->memory_size) {
+        return 0;
+    }
+    return 1;
+}
+
+void* disk_worker(void *arg) {
+    VM* vm = arg;
+    while (1) {
+        pthread_mutex_lock(&vm->disk.mutex);
+
+        while (vm->disk.current_cmd == DISK_CMD_NONE && vm->disk.thread_running) {
+            pthread_cond_wait(&vm->disk.cond_var, &vm->disk.mutex);
+        }
+
+        if (!vm->disk.thread_running) {
+            pthread_mutex_unlock(&vm->disk.mutex);
+            break;
+        }
+
+        int cmd = vm->disk.current_cmd;
+        uint64_t lba = vm->disk.lba;
+        uint64_t mem_addr = vm->disk.mem_addr;
+        uint32_t count = vm->disk.count;
+
+        pthread_mutex_unlock(&vm->disk.mutex);
+
+        if (!is_valid_dma(vm, mem_addr, count)) {
+            fprintf(stderr, "[Disk] DMA Violation @ Addr 0x%lx, Count %d\n", mem_addr, count);
+        } else {
+            fseek(vm->disk.fp, lba * DISK_SECTOR_SIZE, SEEK_SET);
+
+            if (cmd == DISK_CMD_READ) {
+                fread(&vm->memory[mem_addr], DISK_SECTOR_SIZE, count, vm->disk.fp);
+            } else if (cmd ==DISK_CMD_WRITE) {
+                fwrite(&vm->memory[mem_addr], DISK_SECTOR_SIZE, count, vm->disk.fp);
+                fflush(vm->disk.fp);
+            }
+        }
+
+        pthread_mutex_lock(&vm->disk.mutex);
+        vm->disk.current_cmd = DISK_CMD_NONE;
+        vm->disk.op_complete = true;
+        pthread_mutex_unlock(&vm->disk.mutex);
+    }
+    return NULL;
+}
+
 void disk_init(VM *vm, const char *path) {
     printf("cwd: %s\n", getcwd(NULL, 0));
 
     vm->disk.fp = fopen(path, "r+b");
     if (!vm->disk.fp) {
-        printf("Disk image not found, creating new disk: %s\n", path);
+        printf("[Disk] Creating new image: %s\n", path);
         vm->disk.fp = fopen(path, "w+b");
         if (!vm->disk.fp) {
             perror("fopen");
             panic("Cannot create disk image", vm);
             return;
         }
-        uint8_t *buf = calloc(1, DISK_SIZE);
-        if (!buf) {
-            panic("Failed to allocate memory for disk init", vm);
-            return;
+        if (ftruncate(fileno(vm->disk.fp), DISK_SIZE) != 0) {
+            panic("ftruncate faild",vm);
         }
-        fwrite(buf, 1, DISK_SIZE, vm->disk.fp);
-        fflush(vm->disk.fp);
-        free(buf);
         fclose(vm->disk.fp);
         vm->disk.fp = fopen(path, "r+b");
-        printf("Disk image created: %s, size %d bytes\n", path, DISK_SIZE);
     }
     vm->disk.lba = 0;
     vm->disk.mem_addr = 0;
     vm->disk.count = 0;
-    vm->disk.status = 0;
+    vm->disk.status = DISK_STATUS_FREE;
+    vm->disk.current_cmd = DISK_CMD_NONE;
+    vm->disk.op_complete = false;
+    vm->disk.thread_running = true;
+
+    pthread_mutex_init(&vm->disk.mutex, NULL);
+    pthread_cond_init(&vm->disk.cond_var, NULL);
+
+    if (pthread_create(&vm->disk.worker_thread, NULL, disk_worker, vm) != 0) {
+        panic("Failed to create disk worker", vm);
+    }
+
+    printf("[Disk] Created disk worker thread. Image: %s\n", path);
+}
+
+void disk_close(VM *vm) {
+    pthread_mutex_lock(&vm->disk.mutex);
+    vm->disk.thread_running = false;
+    pthread_cond_signal(&vm->disk.cond_var);
+    pthread_mutex_unlock(&vm->disk.mutex);
+
+    pthread_join(vm->disk.worker_thread, NULL);
+    pthread_mutex_destroy(&vm->disk.mutex);
+    pthread_cond_destroy(&vm->disk.cond_var);
+
+    if (vm->disk.fp) fclose(vm->disk.fp);
 }
 
 void disk_read(VM *vm) {
@@ -72,33 +141,31 @@ void disk_write(const VM *vm) {
 }
 
 void disk_cmd(VM *vm, const int value) {
-    if (vm->disk.status == DISK_STATUS_BUSY)
+    pthread_mutex_lock(&vm->disk.mutex);
+
+    if (vm->disk.status == DISK_STATUS_BUSY) {
+        pthread_mutex_unlock(&vm->disk.mutex);
         return;
-
-    vm->disk.pending_cmd = value;
-    vm->disk.status = DISK_STATUS_BUSY;
-}
-void disk_tick(VM *vm) {
-    if (vm->disk.status != DISK_STATUS_BUSY)
-        return;
-
-    switch (vm->disk.pending_cmd) {
-        case DISK_CMD_READ:
-            fseek(vm->disk.fp, vm->disk.lba * DISK_SECTOR_SIZE, SEEK_SET);
-            fread(&vm->memory[vm->disk.mem_addr], DISK_SECTOR_SIZE, vm->disk.count, vm->disk.fp);
-            break;
-
-        case DISK_CMD_WRITE:
-            fseek(vm->disk.fp, vm->disk.lba * DISK_SECTOR_SIZE, SEEK_SET);
-            fwrite(&vm->memory[vm->disk.mem_addr], DISK_SECTOR_SIZE, vm->disk.count, vm->disk.fp);
-            fflush(vm->disk.fp);
-            fsync(fileno(vm->disk.fp));
-            break;
     }
 
-    vm->disk.status = DISK_STATUS_FREE;
-    vm->disk.pending_cmd = 0;
+    vm->disk.current_cmd = value;
+    vm->disk.status = DISK_STATUS_BUSY;
+    vm->disk.op_complete = false;
 
-    trigger_interrupt(vm, INT_DISK_COMPLETE);
+    pthread_cond_signal(&vm->disk.cond_var);
+    pthread_mutex_unlock(&vm->disk.mutex);
 }
+void disk_tick(VM *vm) {
+    if (vm->disk.status == DISK_STATUS_FREE) return;
 
+    pthread_mutex_lock(&vm->disk.mutex);
+
+    if (vm->disk.op_complete) {
+        vm->disk.status = DISK_STATUS_FREE;
+        vm->disk.op_complete = false;
+
+        trigger_interrupt(vm, INT_DISK_COMPLETE);
+    }
+
+    pthread_mutex_unlock(&vm->disk.mutex);
+}

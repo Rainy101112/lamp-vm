@@ -5,9 +5,14 @@
 
 #ifndef VM_VM_H
 #define VM_VM_H
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <time.h>
+#include <sys/_pthread/_pthread_cond_t.h>
+#include <sys/_pthread/_pthread_mutex_t.h>
+#include <sys/_pthread/_pthread_t.h>
+
 static inline uint64_t INST(uint8_t op, uint8_t rd, uint8_t rs1, uint8_t rs2, uint32_t imm) {
     return ((uint64_t)op << 56 | (uint64_t)rd << 48 | (uint64_t)rs1 << 40 | (uint64_t)rs2 << 32) |
         imm;
@@ -51,11 +56,20 @@ typedef uint32_t vm_addr_t;
 
 typedef struct {
     FILE *fp;
+
     uint32_t lba;
     uint32_t mem_addr;
     uint32_t count;
+
+    pthread_t worker_thread;
+    pthread_mutex_t mutex;
+    pthread_cond_t cond_var;
+
     uint8_t status;
     int pending_cmd;
+    int current_cmd;
+    bool thread_running;
+    bool op_complete;
 } Disk;
 typedef uint32_t (*mmio_read32_fn)(VM *vm, uint32_t addr);
 typedef void (*mmio_write32_fn)(VM *vm, uint32_t addr, uint32_t val);
