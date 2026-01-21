@@ -34,7 +34,7 @@ typedef struct VM VM;
 
 #define IO_SIZE 256
 
-#define REG_COUNT 8
+#define REG_COUNT 32
 #define DUMP_MEM_SEEK_LEN 16
 
 #define IVT_SIZE 256
