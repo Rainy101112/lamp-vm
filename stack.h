@@ -44,5 +44,23 @@ static inline uint64_t call_pop(VM *vm) {
     vm->csp++;
     return val;
 }
+static inline void isr_push(VM *vm, uint64_t val) {
+    if (vm->isp == 0) {
+        panic("Interrupt stack overflow", vm);
+        return;
+    }
+    vm->isp--;
+    vm_write64(vm, ISR_STACK_BASE + (uint32_t)vm->isp * 8, val);
+}
+
+static inline uint64_t isr_pop(VM *vm) {
+    if (vm->isp >= ISR_STACK_SIZE) {
+        panic("Interrupt stack underflow", vm);
+        return 0;
+    }
+    uint64_t val = vm_read64(vm, ISR_STACK_BASE + (uint32_t)vm->isp * 8);
+    vm->isp++;
+    return val;
+}
 
 #endif // VM_STACK_H

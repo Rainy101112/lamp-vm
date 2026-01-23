@@ -15,14 +15,16 @@ VM will panic if a bad instruction was executed, and a debug message will be pri
 
 ### Current Memory Mapping
 
-| Type        | Start Addr        | End Addr    | Size    | Usage                   |
-|-------------|-------------------|-------------|---------|-------------------------|
-| IVT         | 0x000000          | 0x0007FF    | 2048 B  | IVT, 8B each            |
-| CALL_STACK  | 0x000800          | 0x000FFF    | 2048 B  | Call Stack              |
-| DATA_STACK  | 0x001000          | 0x0017FF    | 2048 B  | Data Stack              |
-| Timedate    | 0x001800          | 0x001817    | 28 B    | Time (3×u64 + control ) |
-| PROGRAM     | 0x001818          | FB start    | ~4 MB   | Program                 |
-| FrameBuffer | MEM_END - FB_SIZE | MEM_END - 1 | depends | FrameBuffer             |
+| Type        | Start Addr        | End Addr    | Size    | Usage                            |
+|-------------|-------------------|-------------|---------|----------------------------------|
+| IVT         | 0x000000          | 0x0007FF    | 2048 B  | IVT, 8B each                     |
+| CALL_STACK  | 0x000800          | 0x000FFF    | 2048 B  | Call Stack                       |
+| DATA_STACK  | 0x001000          | 0x0017FF    | 2048 B  | Data Stack                       |
+| ISR_STACK   | 0x001800          | 0x001FFF    | 2048 B  | Interrupt Stack (saved context)  |
+| Timedate    | 0x002000          | 0x00201B    | 28 B    | Time (control + 3×u64)           |
+| PROGRAM     | 0x00201C          | FB start    | ~4 MB   | Program                          |
+| FrameBuffer | MEM_END - FB_SIZE | MEM_END - 1 | depends | FrameBuffer                      |
+
 
 ...
 
@@ -48,56 +50,4 @@ Create a assembler and make a subset of C.
 
 ### Instructions Mapping
 
-A single instruction's length is 64bit.
-
-| Type(8)    | rd(8)        | rs1(8)           | rs2(8)  | imm(32)             |
-|------------|--------------|------------------|---------|---------------------|
-| Calc       | destination  | source1          | source2 | none                |
-| LOAD       | target       | address register | /       | Immediate Value     |
-| STORE      | destination  | address register | /       | Immediate Value     |
-| JMP / JZ   | /            | /                | /       | Jump Instruction Id |
-| PUSH / POP | register     | /                | /       | /                   |
-| CMP        | register     | register         | /       | Immediate Value     |
-| MOV        | register     | register         | /       | /                   |
-| MOVI       | register     | /                | /       | Immediate Value     |
-| MEMSET     | Start Addr   | Value            | /       | Length              |
-| MEMCPY     | destination  | source           | /       | Length              |
-| IN         | receiver     | address          | /       | /                   |
-| OUT        | value        | address          | /       | /                   |
-| INT        | interrupt_id | /                | /       | /                   |
-| IRET       | /            | /                | /       | /                   |
-
-### Instructions Usage:
-
-Calc: ALL math calculations such as ADD, SUB, MUL.
-
-LOAD: Load a value in a memory address into other register. Address is `address register(rs1)'s value + imm`.
-
-STORE: Store a value to a memory address. Address is `address register(rs1)'s value + imm`.
-
-JMP: Jump to a command.
-
-JZ: Jump to a command if flags(ZFLAGS) is 0.
-
-PUSH: Push a register into stack.
-
-POP: Pop a value out of the stack.
-
-CMP: Compare two values and set ZFLAGS. If imm is 0, compare rd and rs1, or compare rd and imm. If they are equal, ZFLAG
-will be 0, otherwise it will be 1.
-
-MOV/MOVI: Move rs1's value or a immediate value to rd.
-
-STORE/LOAD: Use relative addressing to store/load a value into memory.
-
-MEMSET: Fill a memory segment with the value in rs1; the segment starts at the address in rd and has a length of imm.
-
-MEMCPY: Copy a segment of memory to another destination.
-
-IN: Use rd register to receive a data from IO address rs1.
-
-OUT: Send rd register's data to IO address rs1.
-
-INT: Submit a software-cause interrupt
-
-IRET: Return from a interrupt.
+Please see [ISA](docs/isa.md)

@@ -59,8 +59,14 @@ void update_sub_flags(VM *vm, int32_t a, int32_t b, int32_t result) {
 
     update_zf_sf(vm, result);
 }
+static inline void clear_cf_of(VM *vm) {
+    vm->flags &= ~(FLAG_CF | FLAG_OF);
+}
 
-
+static inline void update_logic_flags(VM *vm, int32_t result) {
+    clear_cf_of(vm);
+    update_zf_sf(vm, result);
+}
 void vm_instruction_case(VM *vm) {
     uint8_t op, rd, rs1, rs2;
     int32_t imm;
@@ -88,7 +94,7 @@ void vm_instruction_case(VM *vm) {
         }
         case OP_MUL: {
             vm->regs[rd] = vm->regs[rs1] * vm->regs[rs2];
-            update_zf_sf(vm, vm->regs[rd]);
+            update_logic_flags(vm, vm->regs[rd]);
             break;
         }
         case OP_HALT: {
@@ -106,7 +112,7 @@ void vm_instruction_case(VM *vm) {
         }
         case OP_POP: {
             vm->regs[rd] = data_pop(vm);
-            update_zf_sf(vm, vm->regs[rd]);
+            update_logic_flags(vm, vm->regs[rd]);
             break;
         }
         case OP_CALL: {
@@ -127,13 +133,13 @@ void vm_instruction_case(VM *vm) {
         case OP_LOAD32: {
             const vm_addr_t addr = vm->regs[rs1] + imm;
             vm->regs[rd] = vm_read32(vm, addr);
-            update_zf_sf(vm, vm->regs[rd]);
+            update_logic_flags(vm, vm->regs[rd]);
             break;
         }
         case OP_LOADX32: {
             const vm_addr_t addr = vm->regs[rs1] + vm->regs[rs2] + imm;
             vm->regs[rd] = vm_read32(vm, addr);
-            update_zf_sf(vm, vm->regs[rd]);
+            update_logic_flags(vm, vm->regs[rd]);
             break;
         }
         case OP_STORE: {
@@ -167,12 +173,12 @@ void vm_instruction_case(VM *vm) {
         }
         case OP_MOV: {
             vm->regs[rd] = vm->regs[rs1];
-            update_zf_sf(vm, vm->regs[rd]);
+            update_logic_flags(vm, vm->regs[rd]);
             break;
         }
         case OP_MOVI: {
             vm->regs[rd] = imm;
-            update_zf_sf(vm, vm->regs[rd]);
+            update_logic_flags(vm, vm->regs[rd]);
             break;
         }
         case OP_MEMSET: {
@@ -216,69 +222,62 @@ void vm_instruction_case(VM *vm) {
         }
         case OP_INT: {
             const uint32_t int_no = vm->regs[rd];
-            if (int_no >= IVT_SIZE)
-                break;
-
-            const vm_addr_t ivt_entry = IVT_BASE + int_no * 8;
-            const uint64_t isr_ip = vm_read64(vm, ivt_entry);
-
-            call_push(vm, vm->ip);
-            vm->ip = isr_ip;
-            vm->in_interrupt = 1;
+            vm_enter_interrupt(vm, int_no);
             break;
         }
         case OP_IRET: {
-            vm->ip = call_pop(vm);
-            vm->in_interrupt = 0;
+            vm_iret(vm);
             break;
         }
         case OP_AND: {
             vm->regs[rd] = vm->regs[rs1] & vm->regs[rs2];
-            update_zf_sf(vm, vm->regs[rd]);
+            update_logic_flags(vm, vm->regs[rd]);
             break;
         }
         case OP_OR: {
             vm->regs[rd] = vm->regs[rs1] | vm->regs[rs2];
-            update_zf_sf(vm, vm->regs[rd]);
+            update_logic_flags(vm, vm->regs[rd]);
             break;
         }
         case OP_XOR: {
             vm->regs[rd] = vm->regs[rs1] ^ vm->regs[rs2];
-            update_zf_sf(vm, vm->regs[rd]);
+            update_logic_flags(vm, vm->regs[rd]);
             break;
         }
         case OP_NOT: {
             vm->regs[rd] = ~vm->regs[rs1];
-            update_zf_sf(vm, vm->regs[rd]);
+            update_logic_flags(vm, vm->regs[rd]);
             break;
         }
         case OP_SHL: {
             vm->regs[rd] = vm->regs[rs1] << imm;
-            update_zf_sf(vm, vm->regs[rd]);
+            update_logic_flags(vm, vm->regs[rd]);
             break;
         }
         case OP_SHR: {
-            vm->regs[rd] = vm->regs[rs1] >> imm;
-            update_zf_sf(vm, vm->regs[rd]);
+            vm->regs[rd] = ((uint32_t)vm->regs[rs1]) >> imm;
+            update_logic_flags(vm, vm->regs[rd]);
             break;
         }
         case OP_DIV: {
             if (vm->regs[rs2] != 0) {
                 vm->regs[rd] = vm->regs[rs1] / vm->regs[rs2];
-                update_zf_sf(vm, vm->regs[rd]);
+                update_logic_flags(vm, vm->regs[rd]);
             } else {
                 trigger_interrupt(vm, INT_DIVIDE_BY_ZERO);
             }
-
             break;
         }
         case OP_MOD: {
-            if (vm->regs[rs2] != 0)
+            if (vm->regs[rs2] != 0) {
                 vm->regs[rd] = vm->regs[rs1] % vm->regs[rs2];
-            else
+                update_logic_flags(vm, vm->regs[rd]);
+            } else {
                 trigger_interrupt(vm, INT_DIVIDE_BY_ZERO);
+            }
             break;
         }
+
         case OP_JZ: {
             if (vm->flags & FLAG_ZF) {
                 vm->ip = imm;
@@ -319,7 +318,9 @@ void vm_instruction_case(VM *vm) {
             if (!(vm->flags & FLAG_CF)) {
                 vm->ip = imm;
             }
+            break;
         }
+
         default: {
             panic(panic_format("Unknown opcode %d\n", op), vm);
             return;
@@ -444,6 +445,7 @@ VM *vm_create(size_t memory_size, const uint64_t *program, size_t program_size) 
     vm->ip = PROGRAM_BASE;
     vm->csp = CALL_STACK_SIZE;
     vm->dsp = DATA_STACK_SIZE;
+    vm->isp = ISR_STACK_SIZE;
 
     vm->start_realtime_ns = host_unix_time_ns();
     vm->start_monotonic_ns = host_monotonic_time_ns();

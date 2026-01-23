@@ -41,6 +41,7 @@ typedef struct VM VM;
 #define IVT_ENTRY_SIZE 8
 #define CALL_STACK_SIZE 256
 #define DATA_STACK_SIZE 256
+#define ISR_STACK_SIZE 256
 
 #define TIME_REALTIME_OFFSET   0
 #define TIME_MONOTONIC_OFFSET  8
@@ -49,8 +50,10 @@ typedef struct VM VM;
 #define IVT_BASE 0x0000
 #define CALL_STACK_BASE (IVT_BASE + IVT_SIZE * IVT_ENTRY_SIZE)
 #define DATA_STACK_BASE (CALL_STACK_BASE + CALL_STACK_SIZE * 8)
-#define TIME_BASE (DATA_STACK_BASE + DATA_STACK_SIZE * 8)
-#define PROGRAM_BASE (TIME_BASE + 24)
+#define ISR_STACK_BASE (DATA_STACK_BASE + DATA_STACK_SIZE * 8)
+#define TIME_BASE (ISR_STACK_BASE + ISR_STACK_SIZE * 8)
+#define PROGRAM_BASE (TIME_BASE + 28)
+
 #define FB_BASE(addr_space_size) ((addr_space_size) - FB_SIZE)
 typedef uint32_t vm_addr_t;
 
@@ -94,6 +97,7 @@ struct VM{
     int call_stack[CALL_STACK_SIZE];
     int csp;
 
+    int isp;
     uint8_t *memory;
     size_t memory_size;
 
