@@ -12,4 +12,10 @@ enum IO_TABLE {
     DISK_COUNT = 0x13,
     DISK_STATUS = 0x14,
 };
+
+// SCREEN / SCREEN_ATTRIBUTE / KEYBOARD are repurposed as a basic serial device:
+// SCREEN: TX write-only, KEYBOARD: RX read-only, SCREEN_ATTRIBUTE: status/control.
+#define SERIAL_STATUS_RX_READY 0x01
+#define SERIAL_STATUS_TX_READY 0x02
+#define SERIAL_CTRL_RX_INT_ENABLE 0x01
 #endif

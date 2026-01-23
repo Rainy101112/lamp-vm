@@ -1,7 +1,7 @@
 #include "vm.h"
 #include "io.h"
 #include "io_devices/disk/disk.h"
-#include "io_devices/frame/frame.h"
+#include <unistd.h>
 
 void accept_io(VM *vm, const int addr, const int value) {
     if (addr < 0 || addr >= IO_SIZE)
@@ -9,15 +9,15 @@ void accept_io(VM *vm, const int addr, const int value) {
 
     switch (addr) {
     case SCREEN: {
-        char c = (char)value;
-        char attr = (char)vm->io[SCREEN_ATTRIBUTE];
-        put_char_with_attr(c, attr);
+        unsigned char c = (unsigned char)value;
+        write(STDOUT_FILENO, &c, 1);
         vm->io[SCREEN] = value;
         break;
     }
 
     case SCREEN_ATTRIBUTE:
-        vm->io[SCREEN_ATTRIBUTE] = value & 0xFF;
+        vm->io[SCREEN_ATTRIBUTE] = (vm->io[SCREEN_ATTRIBUTE] & 0xFF) |
+            ((value & 0xFF) << 8);
         break;
 
     case DISK_CMD:

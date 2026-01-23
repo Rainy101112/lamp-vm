@@ -1,5 +1,7 @@
 #include <SDL2/SDL.h>
 #include "display.h"
+#include "../../io.h"
+#include "../../interrupt.h"
 #include "../../vm.h"
 
 static SDL_Window *window = NULL;
@@ -17,7 +19,19 @@ int vga_display_init(void) {
     texture = SDL_CreateTexture(
         renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, FB_WIDTH, FB_HEIGHT);
 
+    SDL_StartTextInput();
     return 0;
+}
+
+static void serial_rx_push(VM *vm, uint8_t c) {
+    if (vm->io[SCREEN_ATTRIBUTE] & SERIAL_STATUS_RX_READY) {
+        return;
+    }
+    vm->io[KEYBOARD] = c;
+    vm->io[SCREEN_ATTRIBUTE] |= SERIAL_STATUS_RX_READY;
+    if ((vm->io[SCREEN_ATTRIBUTE] >> 8) & SERIAL_CTRL_RX_INT_ENABLE) {
+        trigger_interrupt(vm, INT_SERIAL);
+    }
 }
 
 void display_update(VM *vm) {
@@ -38,13 +52,35 @@ void display_update(VM *vm) {
 void display_poll_events(VM *vm) {
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
-        if (e.type == SDL_QUIT) {
-            vm->halted = 1;
+        switch (e.type) {
+            case SDL_QUIT:
+                vm->halted = 1;
+                break;
+            case SDL_TEXTINPUT: {
+                const char *p = e.text.text;
+                while (*p != '\0') {
+                    serial_rx_push(vm, (uint8_t)*p);
+                    p++;
+                }
+                break;
+            }
+            case SDL_KEYDOWN:
+                if (e.key.keysym.sym == SDLK_RETURN) {
+                    serial_rx_push(vm, (uint8_t)'\n');
+                } else if (e.key.keysym.sym == SDLK_BACKSPACE) {
+                    serial_rx_push(vm, (uint8_t)0x08);
+                } else if (e.key.keysym.sym == SDLK_TAB) {
+                    serial_rx_push(vm, (uint8_t)'\t');
+                }
+                break;
+            default:
+                break;
         }
     }
 }
 
 void display_shutdown() {
+    SDL_StopTextInput();
     SDL_DestroyTexture(texture);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);

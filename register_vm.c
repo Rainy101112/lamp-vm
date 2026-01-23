@@ -7,7 +7,6 @@
 
 #include "fetch.h"
 #include "vm.h"
-#include "io_devices/frame/frame.h"
 #include "stack.h"
 #include "io.h"
 #include "panic.h"
@@ -15,6 +14,7 @@
 #include "interrupt.h"
 #include "memory.h"
 #include "io_devices/disk/disk.h"
+#include "io_devices/frame/frame.h"
 #include "io_devices/time/time_mmio_register.h"
 #include "io_devices/vga_display/display.h"
 #include "io_devices/vga_display/vga_mmio_register.h"
@@ -205,7 +205,16 @@ void vm_instruction_case(VM *vm) {
         case OP_IN: {
             const int addr = vm->regs[rs1];
             if (addr >= 0 && addr < IO_SIZE) {
-                vm->regs[rd] = vm->io[addr];
+                if (addr == KEYBOARD) {
+                    const int v = vm->io[KEYBOARD];
+                    vm->regs[rd] = v;
+                    vm->io[KEYBOARD] = 0;
+                    vm->io[SCREEN_ATTRIBUTE] &= ~SERIAL_STATUS_RX_READY;
+                } else if (addr == SCREEN_ATTRIBUTE) {
+                    vm->regs[rd] = vm->io[SCREEN_ATTRIBUTE] & 0xFF;
+                } else {
+                    vm->regs[rd] = vm->io[addr];
+                }
             } else {
                 panic(panic_format("IN invalid IO address %d", addr), vm);
             }
@@ -335,7 +344,6 @@ void *vm_thread(void *arg) {
             return NULL;
         vm_handle_interrupts(vm);
         vm_instruction_case(vm);
-        vm_handle_keyboard(vm);
         disk_tick(vm);
     }
     return NULL;
@@ -358,15 +366,12 @@ void display_loop(VM *vm) {
 }
 
 void vm_run(VM *vm) {
-    enable_raw_mode();
-
     pthread_t thread_id;
     pthread_create(&thread_id, NULL, vm_thread, vm);
 
     display_loop(vm);
 
     pthread_join(thread_id, NULL);
-    disable_raw_mode();
 }
 
 void vm_dump(const VM *vm, int mem_preview) {
@@ -450,6 +455,7 @@ VM *vm_create(size_t memory_size, const uint64_t *program, size_t program_size) 
     vm->start_realtime_ns = host_unix_time_ns();
     vm->start_monotonic_ns = host_monotonic_time_ns();
     vm->suspend_count = 0;
+    vm->io[SCREEN_ATTRIBUTE] = SERIAL_STATUS_TX_READY;
     return vm;
 }
 
