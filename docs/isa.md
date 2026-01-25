@@ -325,6 +325,19 @@ Stops VM execution.
 
 ---
 
+## 14. Stack Operations
+
+### POP rd
+
+Pop a data out of data stack to rd register.
+
+---
+
+### PUSH rd
+
+Push a data in rd to data stack.
+
+---
 ## 14. Undefined Behavior
 
 The following are undefined and may cause VM panic:
