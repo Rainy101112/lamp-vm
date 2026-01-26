@@ -7,21 +7,21 @@
 #include "memory.h"
 #include "panic.h"
 
-static inline void data_push(VM *vm, uint8_t val) {
+static inline void data_push(VM *vm, uint32_t val) {
     if (vm->dsp == 0) {
         panic("Data stack overflow", vm);
         return;
     }
     vm->dsp--;
-    vm->memory[DATA_STACK_BASE + vm->dsp] = val;
+    vm_write32(vm, DATA_STACK_BASE + (vm->dsp * 4), val);
 }
 
-static inline uint8_t data_pop(VM *vm) {
+static inline uint32_t data_pop(VM *vm) {
     if (vm->dsp >= DATA_STACK_SIZE) {
         panic("Data stack underflow", vm);
         return 0;
     }
-    uint8_t val = vm->memory[DATA_STACK_BASE + vm->dsp];
+    uint32_t val = vm_read32(vm, DATA_STACK_BASE + (vm->dsp * 4));
     vm->dsp++;
     return val;
 }

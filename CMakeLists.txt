@@ -35,6 +35,9 @@ set(SOURCES
         fetch.h
         instruction.h
         vm.h
+        float.c
+        float.h
+        flags.h
 )
 
 add_executable(vm ${SOURCES})

@@ -93,6 +93,15 @@ This rule is fixed and applies to all current and future instructions.
 - `MUL`
 - `DIV` (when divisor ≠ 0)
 - `MOD` (when divisor ≠ 0)
+- `FADD`
+- `FSUB`
+- `FMUL`
+- `FDIV`
+- `FNEG`
+- `FABS`
+- `FSQRT`
+- `ITOF`
+- `FLOAD32`
 - `AND`
 - `OR`
 - `XOR`
@@ -105,12 +114,14 @@ This rule is fixed and applies to all current and future instructions.
 - `LOAD32`
 - `LOADX32`
 - `POP`
+- `FTOI` (when input is finite and in-range)
 
 ### Instructions that do **not guarantee FLAGS state**
 
 - `STORE`
 - `STORE32`
 - `STOREX32`
+- `FSTORE32`
 - `CALL`
 - `RET`
 - `INT`
@@ -187,7 +198,90 @@ Logical and shift instructions update ZF and SF, and clear CF and OF.
 
 ---
 
-## 7. Comparison Instructions
+## 7. Floating-Point (F32) Instructions
+
+All floating-point instructions interpret register contents as **IEEE 754 binary32** (32-bit float).
+Values are stored in integer registers **bitwise**, with no conversion unless explicitly stated.
+
+### FADD / FSUB / FMUL / FDIV rd, rs1, rs2
+
+```
+rd = (float)rs1 ⊕ (float)rs2
+```
+
+Where ⊕ is `+`, `-`, `*`, or `/`.
+
+- Updates ZF and SF based on the float result (ZF = 1 if result is +0.0 or -0.0, SF = 1 if result < 0)
+- Clears CF and OF
+- Division by 0 follows IEEE 754 behavior (no interrupt)
+
+---
+
+### FNEG / FABS / FSQRT rd, rs1
+
+```
+FNEG:  rd = -rs1
+FABS:  rd = abs(rs1)
+FSQRT: rd = sqrt(rs1)
+```
+
+- Updates ZF and SF based on the float result
+- Clears CF and OF
+
+---
+
+### FCMP rd, rs1
+
+```
+compare (float)rd vs (float)rs1
+```
+
+Flags are set as:
+
+- If either operand is NaN: **OF = 1**, all other flags cleared
+- Else if equal: **ZF = 1**
+- Else if rd < rs1: **SF = 1**
+- Else if rd > rs1: **CF = 1**
+
+---
+
+### ITOF rd, rs1
+
+```
+rd = (float)(int32)rs1
+```
+
+- Updates ZF and SF based on the float result
+- Clears CF and OF
+
+---
+
+### FTOI rd, rs1
+
+```
+rd = (int32)(float)rs1
+```
+
+- If input is NaN or outside int32 range: `rd = 0`, **OF = 1**, ZF/SF/CF cleared
+- Otherwise: updates ZF and SF based on the integer result; clears CF and OF
+
+---
+
+### FLOAD32 rd, [rs1 + imm]
+
+- Reads 32-bit value and **reinterprets bits** as float32
+- Updates ZF and SF based on the float value; clears CF and OF
+
+---
+
+### FSTORE32 [rs1 + imm], rd
+
+- Stores lower 32 bits of `rd` as raw float32 bits
+- Does not modify FLAGS
+
+---
+
+## 8. Comparison Instructions
 
 ### CMP rd, rs1
 
@@ -211,7 +305,7 @@ Same semantics as `CMP`.
 
 ---
 
-## 8. Control Flow Instructions
+## 9. Control Flow Instructions
 
 All jump targets are **absolute addresses** (`imm`).
 
@@ -237,7 +331,7 @@ Signed comparison semantics are used.
 
 ---
 
-## 9. Memory Access
+## 10. Memory Access
 
 ### LOAD rd, [rs1 + imm]
 
@@ -265,7 +359,7 @@ Write operations do not modify FLAGS.
 
 ---
 
-## 10. Stack Model
+## 11. Stack Model
 
 LampVM has **three independent stacks**:
 
@@ -277,7 +371,7 @@ LampVM has **three independent stacks**:
 
 ---
 
-## 11. Interrupt Model
+## 12. Interrupt Model
 
 ### Interrupt Vector Table (IVT)
 
@@ -301,7 +395,7 @@ Nested interrupts are **not supported**.
 
 ---
 
-## 12. IO Instructions
+## 13. IO Instructions
 
 ### IN rd, [rs1]
 
@@ -317,7 +411,7 @@ Out-of-range access causes VM panic.
 
 ---
 
-## 13. System Instruction
+## 14. System Instruction
 
 ### HALT
 
@@ -325,7 +419,7 @@ Stops VM execution.
 
 ---
 
-## 14. Stack Operations
+## 15. Stack Operations
 
 ### POP rd
 
@@ -338,7 +432,7 @@ Pop a data out of data stack to rd register.
 Push a data in rd to data stack.
 
 ---
-## 14. Undefined Behavior
+## 16. Undefined Behavior
 
 The following are undefined and may cause VM panic:
 
@@ -350,7 +444,7 @@ The following are undefined and may cause VM panic:
 
 ---
 
-## 15. Compatibility Policy
+## 17. Compatibility Policy
 
 Once defined in this document, instruction semantics are considered ABI-stable.
 Existing instructions must not change behavior.

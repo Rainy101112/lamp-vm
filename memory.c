@@ -14,6 +14,10 @@ static inline int in_ram(VM *vm, vm_addr_t addr, size_t size) {
 }
 
 uint8_t vm_read8(VM *vm, vm_addr_t addr) {
+    size_t fb_base = FB_BASE(vm->memory_size);
+    if (addr >= fb_base && addr < fb_base + FB_SIZE) {
+        return (uint8_t)vm->fb[addr - fb_base];
+    }
     if (!in_ram(vm, addr, 1)) {
         panic(panic_format("READ8 out of bounds: 0x%08x", addr), vm);
         return 0;
@@ -63,9 +67,6 @@ void vm_write8(VM *vm, vm_addr_t addr, uint8_t value) {
 }
 
 void vm_write32(VM *vm, vm_addr_t addr, uint32_t value) {
-    if (addr >= 0x1000) {
-        printf("DEBUG WRITE: addr=0x%08x, val=0x%08x\n", addr, value);
-    }
     MMIO_Device *dev = find_mmio(vm, addr);
     if (dev && dev->write32) {
         dev->write32(vm, addr, value);

@@ -25,13 +25,6 @@ typedef struct VM VM;
 #define FB_BPP 4
 #define FB_SIZE (FB_WIDTH * FB_HEIGHT * FB_BPP)
 
-#define FLAG_CF 0x01
-#define FLAG_PF 0x02
-#define FLAG_AF 0x04
-#define FLAG_ZF 0x08
-#define FLAG_SF 0x10
-#define FLAG_OF 0x20
-
 #define IO_SIZE 256
 
 #define REG_COUNT 32
@@ -54,7 +47,7 @@ typedef struct VM VM;
 #define TIME_BASE (ISR_STACK_BASE + ISR_STACK_SIZE * 8)
 #define PROGRAM_BASE (TIME_BASE + 28)
 
-#define FB_BASE(addr_space_size) ((addr_space_size) - FB_SIZE)
+#define FB_BASE(addr_space_size) (addr_space_size)
 typedef uint32_t vm_addr_t;
 
 typedef struct {
@@ -102,7 +95,7 @@ struct VM{
     size_t memory_size;
 
     /*
-     * framebuffer targets to a segment in our memory
+     * framebuffer is mapped after main memory:
      * [fb_base, fb_base + FB_SIZE)
      */
     uint32_t *fb;
@@ -168,7 +161,19 @@ enum {
     OP_JL,
     OP_JLE,
     OP_JC,
-    OP_JNC
+    OP_JNC,
+    OP_FADD,
+    OP_FSUB,
+    OP_FMUL,
+    OP_FDIV,
+    OP_FNEG,
+    OP_FABS,
+    OP_FSQRT,
+    OP_FCMP,
+    OP_ITOF,
+    OP_FTOI,
+    OP_FLOAD32,
+    OP_FSTORE32
 };
 
 void vm_dump(const VM *vm, int mem_preview);

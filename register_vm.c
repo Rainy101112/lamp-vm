@@ -18,8 +18,9 @@
 #include "io_devices/time/time_mmio_register.h"
 #include "io_devices/vga_display/display.h"
 #include "io_devices/vga_display/vga_mmio_register.h"
+#include "float.h"
+#include "flags.h"
 const size_t MEM_SIZE = 1048576 * 4; // 4MB
-
 void update_zf_sf(VM *vm, int32_t result) {
     if (result == 0)
         vm->flags |= FLAG_ZF;
@@ -107,7 +108,7 @@ void vm_instruction_case(VM *vm) {
             break;
         }
         case OP_PUSH: {
-            data_push(vm, (uint8_t) vm->regs[rd]);
+            data_push(vm, vm->regs[rd]);
             break;
         }
         case OP_POP: {
@@ -330,6 +331,99 @@ void vm_instruction_case(VM *vm) {
             break;
         }
 
+        case OP_FADD: {
+            float a = reg_as_f32(vm->regs[rs1]);
+            float b = reg_as_f32(vm->regs[rs2]);
+            float r = a + b;
+            vm->regs[rd] = f32_as_reg(r);
+            update_logic_flags(vm, (r == 0.0f) ? 0 : (r < 0.0f ? -1 : 1));
+            break;
+        }
+        case OP_FSUB: {
+            float a = reg_as_f32(vm->regs[rs1]);
+            float b = reg_as_f32(vm->regs[rs2]);
+            float r = a - b;
+            vm->regs[rd] = f32_as_reg(r);
+            update_logic_flags(vm, (r == 0.0f) ? 0 : (r < 0.0f ? -1 : 1));
+            break;
+        }
+        case OP_FMUL: {
+            float a = reg_as_f32(vm->regs[rs1]);
+            float b = reg_as_f32(vm->regs[rs2]);
+            float r = a * b;
+            vm->regs[rd] = f32_as_reg(r);
+            update_logic_flags(vm, (r == 0.0f) ? 0 : (r < 0.0f ? -1 : 1));
+            break;
+        }
+        case OP_FDIV: {
+            float a = reg_as_f32(vm->regs[rs1]);
+            float b = reg_as_f32(vm->regs[rs2]);
+            float r = a / b;
+            vm->regs[rd] = f32_as_reg(r);
+            update_logic_flags(vm, (r == 0.0f) ? 0 : (r < 0.0f ? -1 : 1));
+            break;
+        }
+        case OP_FNEG: {
+            float a = reg_as_f32(vm->regs[rs1]);
+            float r = -a;
+            vm->regs[rd] = f32_as_reg(r);
+            update_logic_flags(vm, (r == 0.0f) ? 0 : (r < 0.0f ? -1 : 1));
+            break;
+        }
+        case OP_FABS: {
+            float a = reg_as_f32(vm->regs[rs1]);
+            float r = fabsf(a);
+            vm->regs[rd] = f32_as_reg(r);
+            update_logic_flags(vm, (r == 0.0f) ? 0 : 1);
+            break;
+        }
+        case OP_FSQRT: {
+            float a = reg_as_f32(vm->regs[rs1]);
+            float r = sqrtf(a);
+            vm->regs[rd] = f32_as_reg(r);
+            update_logic_flags(vm, (r == 0.0f) ? 0 : (r < 0.0f ? -1 : 1));
+            break;
+        }
+        case OP_ITOF: {
+            int32_t i = vm->regs[rs1];
+            float f = (float)i;
+            vm->regs[rd] = f32_as_reg(f);
+            update_logic_flags(vm, (f == 0.0f) ? 0 : (f < 0.0f ? -1 : 1));
+            break;
+        }
+        case OP_FTOI: {
+            float f = reg_as_f32(vm->regs[rs1]);
+            if (f32_is_nan(f) || f > 2147483647.0f || f < -2147483648.0f) {
+                vm->regs[rd] = 0;
+                vm->flags |= FLAG_OF;
+                vm->flags &= ~(FLAG_ZF | FLAG_SF | FLAG_CF);
+            } else {
+                int32_t i = (int32_t)f;
+                vm->regs[rd] = i;
+                update_logic_flags(vm, i);
+            }
+            break;
+        }
+
+        case OP_FLOAD32: {
+            const vm_addr_t addr = vm->regs[rs1] + imm;
+            uint32_t bits = (uint32_t)vm_read32(vm, addr);
+            vm->regs[rd] = (int32_t)bits;
+            float f = reg_as_f32(vm->regs[rd]);
+            update_logic_flags(vm, (f == 0.0f) ? 0 : (f < 0.0f ? -1 : 1));
+            break;
+        }
+        case OP_FSTORE32: {
+            const vm_addr_t addr = vm->regs[rs1] + imm;
+            vm_write32(vm, addr, (uint32_t)vm->regs[rd]);
+            break;
+        }
+        case OP_FCMP: {
+            float a = reg_as_f32(vm->regs[rd]);
+            float b = reg_as_f32(vm->regs[rs1]);
+            update_fcmp_flags(vm, a, b);
+            break;
+        }
         default: {
             panic(panic_format("Unknown opcode %d\n", op), vm);
             return;
@@ -403,7 +497,12 @@ void vm_dump(const VM *vm, int mem_preview) {
     printf("ZF = %d\n", (vm->flags & FLAG_ZF) != 0);
 }
 
-VM *vm_create(size_t memory_size, const uint64_t *program, size_t program_size) {
+VM *vm_create(size_t memory_size,
+              const uint64_t *program,
+              size_t program_size,
+              const uint8_t *data,
+              size_t data_size,
+              const ProgramLayout *layout) {
     VM *vm = malloc(sizeof(VM));
     if (!vm)
         return NULL;
@@ -418,16 +517,7 @@ VM *vm_create(size_t memory_size, const uint64_t *program, size_t program_size) 
     }
     memset(vm->memory, 0, memory_size);
 
-    if (memory_size < FB_SIZE) {
-        panic("Not enough memory for framebuffer\n", vm);
-        return vm;
-    }
-
     size_t fb_base = FB_BASE(memory_size);
-    if (fb_base + FB_SIZE > memory_size) {
-        panic("Framebuffer out of range\n", vm);
-        return vm;
-    }
 
     vm->fb = malloc(FB_SIZE);
     printf("vm->fb = %p\n", (void *) vm->fb);
@@ -440,14 +530,44 @@ VM *vm_create(size_t memory_size, const uint64_t *program, size_t program_size) 
     register_fb_mmio(vm);
     register_time_mmio(vm);
     size_t prog_bytes = program_size * sizeof(uint64_t);
-    if (PROGRAM_BASE + prog_bytes > memory_size) {
+    uint32_t text_base = PROGRAM_BASE;
+    uint32_t data_base = PROGRAM_BASE + (uint32_t)prog_bytes;
+    uint32_t bss_base = data_base + (uint32_t)data_size;
+    uint32_t bss_size = 0;
+
+    if (layout) {
+        text_base = layout->text_base;
+        data_base = layout->data_base;
+        bss_base = layout->bss_base;
+        bss_size = layout->bss_size;
+        if (layout->text_size != 0 && layout->text_size != prog_bytes) {
+            printf("Warning: layout TEXT_SIZE (%u) != program size (%zu)\n",
+                   layout->text_size, prog_bytes);
+        }
+    }
+
+    if ((size_t)text_base + prog_bytes > memory_size) {
         panic("Program too large\n", vm);
         return vm;
     }
 
-    memcpy(vm->memory + PROGRAM_BASE, program, prog_bytes);
+    memcpy(vm->memory + text_base, program, prog_bytes);
+    if (data && data_size > 0) {
+        if ((size_t)data_base + data_size > memory_size) {
+            panic("Data segment out of range\n", vm);
+            return vm;
+        }
+        memcpy(vm->memory + data_base, data, data_size);
+    }
+    if (bss_size > 0) {
+        if ((size_t)bss_base + bss_size > memory_size) {
+            panic("BSS segment out of range\n", vm);
+            return vm;
+        }
+        memset(vm->memory + bss_base, 0, bss_size);
+    }
 
-    vm->ip = PROGRAM_BASE;
+    vm->ip = text_base;
     vm->csp = CALL_STACK_SIZE;
     vm->dsp = DATA_STACK_SIZE;
     vm->isp = ISR_STACK_SIZE;
@@ -491,13 +611,33 @@ int main() {
     size_t program_size = sizeof(program) / sizeof(program[0]);
     */
 
-    const char* filename = "program.bin";
+    const char* filename = "main.bin";
+    const char* layout_file = "main.layout";
+    const char* data_file = "main.data";
     size_t program_size = 0;
     uint64_t* program = load_program(filename, &program_size);
     if (program) {
         printf("Loaded program from %s, %zu instructions.\n", filename, program_size);
     }
-    VM *vm = vm_create(MEM_SIZE, program, program_size);
+    ProgramLayout layout;
+    ProgramLayout *layout_ptr = NULL;
+    if (load_layout(layout_file, &layout)) {
+        layout_ptr = &layout;
+        printf("Loaded layout from %s\n", layout_file);
+    } else {
+        printf("No layout file found, using legacy layout\n");
+    }
+
+    size_t data_size = 0;
+    uint8_t *data = load_data(data_file, &data_size);
+    if (data) {
+        printf("Loaded data from %s, %zu bytes.\n", data_file, data_size);
+    } else if (layout_ptr && layout_ptr->data_size > 0) {
+        printf("Warning: layout expects data segment (%u bytes) but %s is missing\n",
+               layout_ptr->data_size, data_file);
+    }
+
+    VM *vm = vm_create(MEM_SIZE, program, program_size, data, data_size, layout_ptr);
     disk_init(vm, "./disk.img");
     init_ivt(vm);
     printf("Loaded VM. \n Call Stack size: %d\n Data Stack size: %d \n Memory Size: %lu\n Memory "
@@ -515,5 +655,7 @@ int main() {
     flush_screen_final();
     printf("Execution complete in %lu cycles.\n", vm->execution_times);
     vm_destroy(vm);
+    free(program);
+    free(data);
     return 0;
 }
