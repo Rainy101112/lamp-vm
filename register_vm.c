@@ -20,6 +20,7 @@
 #include "io_devices/vga_display/vga_mmio_register.h"
 #include "float.h"
 #include "flags.h"
+#include "debug.h"
 const size_t MEM_SIZE = 1048576 * 4; // 4MB
 void update_zf_sf(VM *vm, int32_t result) {
     if (result == 0)
@@ -72,6 +73,7 @@ void vm_instruction_case(VM *vm) {
     uint8_t op, rd, rs1, rs2;
     int32_t imm;
     FETCH64(vm, op, rd, rs1, rs2, imm);
+    vm_debug_count_instruction(vm, op);
     vm->execution_times++;
     //printf("IP=%lu, executing opcode=%d\n", vm->ip, op);
     //printf("0x%08x,0x%08x,0x%08x,0x%08x\n", rd,rs1,rs2,imm);
@@ -436,6 +438,7 @@ void *vm_thread(void *arg) {
     while (!vm->halted) {
         if (vm->panic)
             return NULL;
+        vm_debug_pause_if_needed(vm, (uint32_t)vm->ip);
         vm_handle_interrupts(vm);
         vm_instruction_case(vm);
         disk_tick(vm);
@@ -576,12 +579,14 @@ VM *vm_create(size_t memory_size,
     vm->start_monotonic_ns = host_monotonic_time_ns();
     vm->suspend_count = 0;
     vm->io[SCREEN_ATTRIBUTE] = SERIAL_STATUS_TX_READY;
+    vm_debug_init(vm);
     return vm;
 }
 
 void vm_destroy(VM *vm) {
     if (!vm)
         return;
+    vm_debug_destroy(vm);
     disk_close(vm);
     if (vm->memory)
         free(vm->memory);
@@ -654,6 +659,7 @@ int main() {
 
     flush_screen_final();
     printf("Execution complete in %lu cycles.\n", vm->execution_times);
+    vm_debug_print_stats(vm);
     vm_destroy(vm);
     free(program);
     free(data);

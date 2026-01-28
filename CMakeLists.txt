@@ -9,6 +9,8 @@ endif()
 
 set(SOURCES
         register_vm.c
+        debug.c
+        debug.h
         io_devices/frame/frame.c
         io.h
         io.c
@@ -67,6 +69,11 @@ else()
     if(NOT MSVC)
         target_compile_options(vm PRIVATE -g -O0)
     endif()
+endif()
+
+option(VM_DEBUG "Enable VM debug features" OFF)
+if(VM_DEBUG)
+    target_compile_definitions(vm PRIVATE VM_DEBUG VM_MEMCHECK VM_INSTR_STATS)
 endif()
 
 if(APPLE)

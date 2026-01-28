@@ -18,6 +18,9 @@ static inline uint64_t INST(uint8_t op, uint8_t rd, uint8_t rs1, uint8_t rs2, ui
         imm;
 }
 typedef struct VM VM;
+#ifdef VM_DEBUG
+typedef struct VM_Debug VM_Debug;
+#endif
 #define MAX_MMIO_DEVICES 16
 
 #define FB_WIDTH 640
@@ -118,6 +121,9 @@ struct VM{
     MMIO_Device *mmio_devices[MAX_MMIO_DEVICES];
     int mmio_count;
 
+#ifdef VM_DEBUG
+    VM_Debug *debug;
+#endif
 };
 enum {
     OP_ADD = 1,

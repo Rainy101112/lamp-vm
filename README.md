@@ -13,6 +13,31 @@ Assembler could be found at (lampvm-assembler)[https://github.com/glowingstone12
 
 VM will panic if a bad instruction was executed, and a debug message will be print.
 
+### Debug (optional, compile-time)
+
+Enable with CMake:
+
+```bash
+cmake -DVM_DEBUG=ON ..
+```
+
+When enabled, the VM includes:
+- Instruction statistics (per-opcode counts).
+- Memory alignment checks for 32/64-bit reads and writes.
+- Interactive single-step and breakpoints.
+
+Runtime controls (only when built with `VM_DEBUG=ON`):
+- `VM_DEBUG_STEP=1` or `VM_STEP=1` starts in single-step mode.
+- `VM_DEBUG_PAUSE=1` pauses immediately at start.
+- `VM_BREAKPOINTS=0x201C,0x2024` sets breakpoints (comma/space-separated, hex or decimal).
+
+Interactive debugger commands:
+- `s` step, `c` continue
+- `r` registers
+- `m <addr> <len>` memory dump
+- `b <addr>` add breakpoint, `d <addr>` remove breakpoint, `l` list breakpoints
+- `q` quit VM
+
 ### Current Memory Mapping
 
 | Type        | Start Addr        | End Addr    | Size    | Usage                            |

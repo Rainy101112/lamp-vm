@@ -13,6 +13,14 @@ static inline int in_ram(VM *vm, vm_addr_t addr, size_t size) {
     return addr + size <= vm->memory_size;
 }
 
+#ifdef VM_MEMCHECK
+static inline void memcheck_align(VM *vm, vm_addr_t addr, size_t align, const char *op) {
+    if ((addr % align) != 0) {
+        panic(panic_format("%s unaligned address: 0x%08x", op, addr), vm);
+    }
+}
+#endif
+
 uint8_t vm_read8(VM *vm, vm_addr_t addr) {
     size_t fb_base = FB_BASE(vm->memory_size);
     if (addr >= fb_base && addr < fb_base + FB_SIZE) {
@@ -26,6 +34,9 @@ uint8_t vm_read8(VM *vm, vm_addr_t addr) {
 }
 
 uint32_t vm_read32(VM *vm, vm_addr_t addr) {
+#ifdef VM_MEMCHECK
+    memcheck_align(vm, addr, 4, "READ32");
+#endif
     MMIO_Device *dev = find_mmio(vm, addr);
     if (dev) {
         return vm_mmio_read32(vm, addr);
@@ -45,6 +56,9 @@ uint32_t vm_read32(VM *vm, vm_addr_t addr) {
 }
 
 uint64_t vm_read64(VM *vm, vm_addr_t addr) {
+#ifdef VM_MEMCHECK
+    memcheck_align(vm, addr, 8, "READ64");
+#endif
     uint64_t lo = vm_read32(vm, addr);
     uint64_t hi = vm_read32(vm, addr + 4);
     return lo | (hi << 32);
@@ -67,6 +81,9 @@ void vm_write8(VM *vm, vm_addr_t addr, uint8_t value) {
 }
 
 void vm_write32(VM *vm, vm_addr_t addr, uint32_t value) {
+#ifdef VM_MEMCHECK
+    memcheck_align(vm, addr, 4, "WRITE32");
+#endif
     MMIO_Device *dev = find_mmio(vm, addr);
     if (dev && dev->write32) {
         dev->write32(vm, addr, value);
@@ -84,6 +101,9 @@ void vm_write32(VM *vm, vm_addr_t addr, uint32_t value) {
 }
 
 void vm_write64(VM *vm, vm_addr_t addr, uint64_t value) {
+#ifdef VM_MEMCHECK
+    memcheck_align(vm, addr, 8, "WRITE64");
+#endif
     if (!in_ram(vm, addr, 8)) {
         panic(panic_format("WRITE64 out of bounds: 0x%08x", addr), vm);
         return;
