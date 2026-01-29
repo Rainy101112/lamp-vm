@@ -81,6 +81,7 @@ static const char *op_name(uint8_t op) {
         [OP_FTOI] = "FTOI",
         [OP_FLOAD32] = "FLOAD32",
         [OP_FSTORE32] = "FSTORE32",
+        [OP_INC] = "INC",
     };
     return names[op] ? names[op] : "UNKNOWN";
 }

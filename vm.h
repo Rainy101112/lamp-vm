@@ -179,7 +179,8 @@ enum {
     OP_ITOF,
     OP_FTOI,
     OP_FLOAD32,
-    OP_FSTORE32
+    OP_FSTORE32,
+    OP_INC
 };
 
 void vm_dump(const VM *vm, int mem_preview);

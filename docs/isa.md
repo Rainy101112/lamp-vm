@@ -87,6 +87,7 @@ This rule is fixed and applies to all current and future instructions.
 - `SUB`
 - `CMP`
 - `CMPI`
+- `INC`
 
 ### Instructions that update **ZF and SF only**, and **clear CF and OF**
 
@@ -195,6 +196,16 @@ rd = rs1 % rs2
 ### AND / OR / XOR / NOT / SHL / SHR
 
 Logical and shift instructions update ZF and SF, and clear CF and OF.
+
+---
+
+### INC rd
+
+```
+rd = rd + 1
+```
+
+Updates ZF, SF, CF, OF (same as `ADD`).
 
 ---
 

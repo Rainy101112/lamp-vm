@@ -289,6 +289,14 @@ void vm_instruction_case(VM *vm) {
             }
             break;
         }
+        case OP_INC: {
+            const int32_t a = vm->regs[rd];
+            const int32_t b = 1;
+            const int32_t res = a + b;
+            vm->regs[rd] = res;
+            update_add_flags(vm, a, b, res);
+            break;
+        }
 
         case OP_JZ: {
             if (vm->flags & FLAG_ZF) {

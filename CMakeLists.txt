@@ -8,7 +8,7 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 set(SOURCES
-        register_vm.c
+        vm.c
         debug.c
         debug.h
         io_devices/frame/frame.c
