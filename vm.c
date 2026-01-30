@@ -625,32 +625,25 @@ int main() {
     */
 
     const char* filename = "main.bin";
-    const char* layout_file = "main.layout";
-    const char* data_file = "main.data";
     size_t program_size = 0;
-    uint64_t* program = load_program(filename, &program_size);
-    if (program) {
-        printf("Loaded program from %s, %zu instructions.\n", filename, program_size);
-    }
-    ProgramLayout layout;
-    ProgramLayout *layout_ptr = NULL;
-    if (load_layout(layout_file, &layout)) {
-        layout_ptr = &layout;
-        printf("Loaded layout from %s\n", layout_file);
-    } else {
-        printf("No layout file found, using legacy layout\n");
-    }
-
     size_t data_size = 0;
-    uint8_t *data = load_data(data_file, &data_size);
-    if (data) {
-        printf("Loaded data from %s, %zu bytes.\n", data_file, data_size);
-    } else if (layout_ptr && layout_ptr->data_size > 0) {
-        printf("Warning: layout expects data segment (%u bytes) but %s is missing\n",
-               layout_ptr->data_size, data_file);
+    uint64_t* program = NULL;
+    uint8_t* data = NULL;
+    ProgramLayout layout;
+
+    if (!load_program_single(filename, &program, &program_size, &data, &data_size, &layout)) {
+        printf("Failed to load program from %s\n", filename);
+        return 1;
     }
 
-    VM *vm = vm_create(MEM_SIZE, program, program_size, data, data_size, layout_ptr);
+    printf("Loaded program from %s, %zu instructions.\n", filename, program_size);
+    printf("Loaded data: %zu bytes.\n", data_size);
+    printf("Layout: TEXT_BASE=0x%08X TEXT_SIZE=%u DATA_BASE=0x%08X DATA_SIZE=%u BSS_BASE=0x%08X BSS_SIZE=%u\n",
+           layout.text_base, layout.text_size,
+           layout.data_base, layout.data_size,
+           layout.bss_base, layout.bss_size);
+
+    VM *vm = vm_create(MEM_SIZE, program, program_size, data, data_size, &layout);
     disk_init(vm, "./disk.img");
     init_ivt(vm);
     printf("Loaded VM. \n Call Stack size: %d\n Data Stack size: %d \n Memory Size: %lu\n Memory "

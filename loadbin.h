@@ -19,5 +19,11 @@ typedef struct {
 uint64_t *load_program(const char *filename, size_t *out_size);
 uint8_t *load_data(const char *filename, size_t *out_size);
 int load_layout(const char *filename, ProgramLayout *out_layout);
+int load_program_single(const char *filename,
+                        uint64_t **out_program,
+                        size_t *out_program_size,
+                        uint8_t **out_data,
+                        size_t *out_data_size,
+                        ProgramLayout *out_layout);
 
 #endif // VM_LOADBIN_H

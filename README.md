@@ -9,6 +9,22 @@ done if you want to compile it by yourself.
 
 Assembler could be found at (lampvm-assembler)[https://github.com/glowingstone124/lampvm-toolchain]
 
+## Program Binary Format
+
+The VM expects a single program binary with a 24-byte header followed by text and data:
+
+- Header: 6 little-endian `u32` values
+  1. `TEXT_BASE`
+  2. `TEXT_SIZE` (bytes)
+  3. `DATA_BASE`
+  4. `DATA_SIZE` (bytes)
+  5. `BSS_BASE`
+  6. `BSS_SIZE` (bytes)
+- Text section: instruction stream, `u64` little-endian
+- Data section: raw bytes
+
+This matches the output from the toolchain.
+
 ### Panic
 
 VM will panic if a bad instruction was executed, and a debug message will be print.

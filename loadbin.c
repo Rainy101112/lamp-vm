@@ -119,3 +119,101 @@ int load_layout(const char *filename, ProgramLayout *out_layout) {
     fclose(fp);
     return 1;
 }
+
+static uint32_t read_u32_le(const uint8_t bytes[4]) {
+    return (uint32_t)bytes[0]
+        | ((uint32_t)bytes[1] << 8)
+        | ((uint32_t)bytes[2] << 16)
+        | ((uint32_t)bytes[3] << 24);
+}
+
+int load_program_single(const char *filename,
+                        uint64_t **out_program,
+                        size_t *out_program_size,
+                        uint8_t **out_data,
+                        size_t *out_data_size,
+                        ProgramLayout *out_layout) {
+    if (!out_program || !out_program_size || !out_data || !out_data_size || !out_layout) {
+        return 0;
+    }
+
+    *out_program = NULL;
+    *out_data = NULL;
+    *out_program_size = 0;
+    *out_data_size = 0;
+    memset(out_layout, 0, sizeof(*out_layout));
+
+    FILE *fp = fopen(filename, "rb");
+    if (!fp) {
+        perror("fopen");
+        return 0;
+    }
+
+    uint8_t header[24];
+    size_t read_count = fread(header, 1, sizeof(header), fp);
+    if (read_count != sizeof(header)) {
+        perror("fread");
+        fclose(fp);
+        return 0;
+    }
+
+    out_layout->text_base = read_u32_le(&header[0]);
+    out_layout->text_size = read_u32_le(&header[4]);
+    out_layout->data_base = read_u32_le(&header[8]);
+    out_layout->data_size = read_u32_le(&header[12]);
+    out_layout->bss_base = read_u32_le(&header[16]);
+    out_layout->bss_size = read_u32_le(&header[20]);
+
+    if (out_layout->text_size % sizeof(uint64_t) != 0) {
+        fprintf(stderr, "TEXT_SIZE not aligned to 8 bytes\n");
+        fclose(fp);
+        return 0;
+    }
+
+    size_t text_bytes = out_layout->text_size;
+    size_t data_bytes = out_layout->data_size;
+    size_t program_size = text_bytes / sizeof(uint64_t);
+
+    if (text_bytes > 0) {
+        uint64_t *program = malloc(text_bytes);
+        if (!program) {
+            perror("malloc");
+            fclose(fp);
+            return 0;
+        }
+        if (fread(program, 1, text_bytes, fp) != text_bytes) {
+            perror("fread");
+            free(program);
+            fclose(fp);
+            return 0;
+        }
+        *out_program = program;
+        *out_program_size = program_size;
+    }
+
+    if (data_bytes > 0) {
+        uint8_t *data = malloc(data_bytes);
+        if (!data) {
+            perror("malloc");
+            free(*out_program);
+            *out_program = NULL;
+            *out_program_size = 0;
+            fclose(fp);
+            return 0;
+        }
+        if (fread(data, 1, data_bytes, fp) != data_bytes) {
+            perror("fread");
+            free(data);
+            free(*out_program);
+            *out_program = NULL;
+            *out_program_size = 0;
+            fclose(fp);
+            return 0;
+        }
+        *out_data = data;
+        *out_data_size = data_bytes;
+    }
+
+    fclose(fp);
+    return 1;
+}
