@@ -1,6 +1,3 @@
-//
-// Created by Max Wang on 2025/12/30.
-//
 #pragma once
 #ifndef VM_INTERRUPT_H
 #define VM_INTERRUPT_H
@@ -16,11 +13,11 @@ void trigger_interrupt(VM *vm, uint32_t int_no);
 void vm_enter_interrupt(VM *vm, uint32_t int_no);
 void vm_iret(VM *vm);
 
-enum {
-    INT_KEYBOARD = 0x00,
-    INT_DIVIDE_BY_ZERO = 0x01,
-    INT_DISK_COMPLETE = 0x02,
-    INT_SERIAL = 0x03
-} INT_ALIAS;
+typedef enum InterruptNo {
+    INT_KEYBOARD        = 0x00,
+    INT_DIVIDE_BY_ZERO  = 0x01,
+    INT_DISK_COMPLETE   = 0x02,
+    INT_SERIAL          = 0x03
+} InterruptNo;
 
 #endif // VM_INTERRUPT_H

@@ -322,6 +322,12 @@ void vm_instruction_case(VM *vm) {
             }
             break;
         }
+        case OP_JL: {
+            if ((vm->flags & FLAG_SF) != (vm->flags & FLAG_OF)) {
+                vm->ip = imm;
+            }
+            break;
+        }
         case OP_JLE: {
             if ((vm->flags & FLAG_ZF) || (vm->flags & FLAG_SF) != (vm->flags & FLAG_OF)) {
                 vm->ip = imm;
@@ -624,7 +630,7 @@ int main() {
     size_t program_size = sizeof(program) / sizeof(program[0]);
     */
 
-    const char* filename = "main.bin";
+    const char* filename = "lifegame.bin";
     size_t program_size = 0;
     size_t data_size = 0;
     uint64_t* program = NULL;

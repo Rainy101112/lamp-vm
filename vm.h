@@ -2,16 +2,17 @@
 //
 // Created by Max Wang on 2025/12/28.
 //
-
+#pragma once
 #ifndef VM_VM_H
 #define VM_VM_H
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <time.h>
-#include <sys/_pthread/_pthread_cond_t.h>
-#include <sys/_pthread/_pthread_mutex_t.h>
-#include <sys/_pthread/_pthread_t.h>
+#include <pthread.h>
 
 static inline uint64_t INST(uint8_t op, uint8_t rd, uint8_t rs1, uint8_t rs2, uint32_t imm) {
     return ((uint64_t)op << 56 | (uint64_t)rd << 48 | (uint64_t)rs1 << 40 | (uint64_t)rs2 << 32) |
@@ -195,4 +196,5 @@ static inline uint64_t host_monotonic_time_ns(void) {
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint64_t)ts.tv_sec * 1000000000ull + ts.tv_nsec;
 }
+
 #endif

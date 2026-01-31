@@ -13,7 +13,7 @@ uint32_t fb_read32(VM *vm, uint32_t addr) {
 void fb_write32(VM *vm, uint32_t addr, uint32_t value) {
     size_t fb_base = FB_BASE(vm->memory_size);
     size_t pixel_index = (addr - fb_base) / 4;
-    printf("Writing to MMIO ID %d\n", vm->mmio_count);
+    //printf("Writing to MMIO ID %d\n", vm->mmio_count);
     vm->fb[pixel_index] = value;
 }
 
