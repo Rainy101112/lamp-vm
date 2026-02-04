@@ -33,7 +33,7 @@ All instructions use a unified 64-bit format:
 | rd     | 8 bit  | Destination register       |
 | rs1    | 8 bit  | Source register 1          |
 | rs2    | 8 bit  | Source register 2          |
-| imm    | 32 bit | Immediate value (unsigned) |
+| imm    | 32 bit | Immediate field (instruction-defined interpretation) |
 
 Unused fields **must be set to 0**.
 
@@ -88,6 +88,8 @@ This rule is fixed and applies to all current and future instructions.
 - `CMP`
 - `CMPI`
 - `INC`
+- `ADDI`
+- `SUBI`
 
 ### Instructions that update **ZF and SF only**, and **clear CF and OF**
 
@@ -109,6 +111,12 @@ This rule is fixed and applies to all current and future instructions.
 - `NOT`
 - `SHL`
 - `SHR`
+- `SAR`
+- `ANDI`
+- `ORI`
+- `XORI`
+- `SHLI`
+- `SHRI`
 - `MOV`
 - `MOVI`
 - `LOAD`
@@ -157,8 +165,6 @@ rd = rs1 - rs2
 
 Updates ZF, SF, CF, OF.
 
-Updates ZF, SF, CF, OF.
-
 ---
 
 ### MUL rd, rs1, rs2
@@ -193,9 +199,23 @@ rd = rs1 % rs2
 
 ---
 
-### AND / OR / XOR / NOT / SHL / SHR
+### AND / OR / XOR / NOT
 
 Logical and shift instructions update ZF and SF, and clear CF and OF.
+
+---
+
+### SHL / SHR / SAR rd, rs1, rs2
+
+```
+sh = rs2 & 31
+SHL: rd = (uint32)rs1 << sh
+SHR: rd = (uint32)rs1 >> sh
+SAR: rd = (int32)rs1 >> sh
+```
+
+- Update ZF and SF
+- Clear CF and OF
 
 ---
 
@@ -206,6 +226,39 @@ rd = rd + 1
 ```
 
 Updates ZF, SF, CF, OF (same as `ADD`).
+
+---
+
+### ADDI / SUBI rd, rs1, imm
+
+```
+ADDI: rd = rs1 + imm
+SUBI: rd = rs1 - imm
+```
+
+- Same FLAGS semantics as `ADD` / `SUB`
+
+---
+
+### ANDI / ORI / XORI rd, rs1, imm
+
+Bitwise immediate operations.
+
+- Update ZF and SF
+- Clear CF and OF
+
+---
+
+### SHLI / SHRI rd, rs1, imm
+
+```
+sh = imm & 31
+SHLI: rd = (uint32)rs1 << sh
+SHRI: rd = (uint32)rs1 >> sh
+```
+
+- Update ZF and SF
+- Clear CF and OF
 
 ---
 
@@ -336,6 +389,7 @@ Unconditional jump.
 | JNC         | CF == 0              |
 | JG          | ZF == 0 and SF == OF |
 | JGE         | SF == OF             |
+| JL          | SF != OF             |
 | JLE         | ZF == 1 or SF != OF  |
 
 Signed comparison semantics are used.
@@ -379,6 +433,8 @@ LampVM has **three independent stacks**:
 | Call Stack | CALL / RET             |
 | Data Stack | PUSH / POP             |
 | ISR Stack  | Interrupt context save |
+
+All three stacks are implemented in memory-mapped stack regions (`CALL_STACK_BASE`, `DATA_STACK_BASE`, `ISR_STACK_BASE`).
 
 ---
 
