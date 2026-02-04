@@ -52,6 +52,7 @@ typedef struct VM_Debug VM_Debug;
 #define PROGRAM_BASE (TIME_BASE + 28)
 
 #define FB_BASE(addr_space_size) (addr_space_size)
+#define FB_LEGACY_BASE 0x00620000u
 typedef uint32_t vm_addr_t;
 
 typedef struct {

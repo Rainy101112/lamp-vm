@@ -13,6 +13,19 @@ static inline int in_ram(VM *vm, vm_addr_t addr, size_t size) {
     return addr + size <= vm->memory_size;
 }
 
+static inline int fb_byte_index(VM *vm, vm_addr_t addr, size_t *out_index) {
+    const size_t fb_base = FB_BASE(vm->memory_size);
+    if (addr >= fb_base && addr < fb_base + FB_SIZE) {
+        *out_index = (size_t)(addr - fb_base);
+        return 1;
+    }
+    if (addr >= FB_LEGACY_BASE && addr < FB_LEGACY_BASE + FB_SIZE) {
+        *out_index = (size_t)(addr - FB_LEGACY_BASE);
+        return 1;
+    }
+    return 0;
+}
+
 #ifdef VM_MEMCHECK
 static inline void memcheck_align(VM *vm, vm_addr_t addr, size_t align, const char *op) {
     if ((addr % align) != 0) {
@@ -22,9 +35,9 @@ static inline void memcheck_align(VM *vm, vm_addr_t addr, size_t align, const ch
 #endif
 
 uint8_t vm_read8(VM *vm, vm_addr_t addr) {
-    size_t fb_base = FB_BASE(vm->memory_size);
-    if (addr >= fb_base && addr < fb_base + FB_SIZE) {
-        return (uint8_t)vm->fb[addr - fb_base];
+    size_t fb_index = 0;
+    if (fb_byte_index(vm, addr, &fb_index)) {
+        return ((uint8_t *) vm->fb)[fb_index];
     }
     if (!in_ram(vm, addr, 1)) {
         panic(panic_format("READ8 out of bounds: 0x%08x", addr), vm);
@@ -66,9 +79,9 @@ uint64_t vm_read64(VM *vm, vm_addr_t addr) {
 
 void vm_write8(VM *vm, vm_addr_t addr, uint8_t value) {
     // intercept mmio request
-    size_t fb_base = FB_BASE(vm->memory_size);
-    if (addr >= fb_base && addr < fb_base + FB_SIZE) {
-        vm->fb[addr - fb_base] = value;
+    size_t fb_index = 0;
+    if (fb_byte_index(vm, addr, &fb_index)) {
+        ((uint8_t *) vm->fb)[fb_index] = value;
         return;
     }
 
