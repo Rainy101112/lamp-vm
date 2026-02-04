@@ -201,7 +201,7 @@ rd = rs1 % rs2
 
 ### AND / OR / XOR / NOT
 
-Logical and shift instructions update ZF and SF, and clear CF and OF.
+Logical instructions update ZF and SF, and clear CF and OF.
 
 ---
 
