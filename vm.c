@@ -61,6 +61,7 @@ void update_sub_flags(VM *vm, int32_t a, int32_t b, int32_t result) {
 
     update_zf_sf(vm, result);
 }
+
 static inline void clear_cf_of(VM *vm) {
     vm->flags &= ~(FLAG_CF | FLAG_OF);
 }
@@ -69,6 +70,7 @@ static inline void update_logic_flags(VM *vm, int32_t result) {
     clear_cf_of(vm);
     update_zf_sf(vm, result);
 }
+
 void vm_instruction_case(VM *vm) {
     uint8_t op, rd, rs1, rs2;
     int32_t imm;
@@ -129,7 +131,7 @@ void vm_instruction_case(VM *vm) {
         }
         case OP_LOAD: {
             const vm_addr_t addr = vm->regs[rs1] + imm;
-            vm->regs[rd] = (uint32_t)vm_read8(vm, addr);
+            vm->regs[rd] = (uint32_t) vm_read8(vm, addr);
             update_zf_sf(vm, vm->regs[rd]);
             break;
         }
@@ -262,12 +264,20 @@ void vm_instruction_case(VM *vm) {
             break;
         }
         case OP_SHL: {
-            vm->regs[rd] = vm->regs[rs1] << imm;
+            uint32_t sh = (uint32_t)vm->regs[rs2] & 31u;
+            vm->regs[rd] = (int32_t)((uint32_t)vm->regs[rs1] << sh);
             update_logic_flags(vm, vm->regs[rd]);
             break;
         }
         case OP_SHR: {
-            vm->regs[rd] = ((uint32_t)vm->regs[rs1]) >> imm;
+            uint32_t sh = (uint32_t)vm->regs[rs2] & 31u;
+            vm->regs[rd] = (int32_t)((uint32_t)vm->regs[rs1] >> sh); // 逻辑右移
+            update_logic_flags(vm, vm->regs[rd]);
+            break;
+        }
+        case OP_SAR: {
+            uint32_t sh = (uint32_t)vm->regs[rs2] & 31u;
+            vm->regs[rd] = vm->regs[rs1] >> sh;
             update_logic_flags(vm, vm->regs[rd]);
             break;
         }
@@ -402,7 +412,7 @@ void vm_instruction_case(VM *vm) {
         }
         case OP_ITOF: {
             int32_t i = vm->regs[rs1];
-            float f = (float)i;
+            float f = (float) i;
             vm->regs[rd] = f32_as_reg(f);
             update_logic_flags(vm, (f == 0.0f) ? 0 : (f < 0.0f ? -1 : 1));
             break;
@@ -414,7 +424,7 @@ void vm_instruction_case(VM *vm) {
                 vm->flags |= FLAG_OF;
                 vm->flags &= ~(FLAG_ZF | FLAG_SF | FLAG_CF);
             } else {
-                int32_t i = (int32_t)f;
+                int32_t i = (int32_t) f;
                 vm->regs[rd] = i;
                 update_logic_flags(vm, i);
             }
@@ -423,21 +433,64 @@ void vm_instruction_case(VM *vm) {
 
         case OP_FLOAD32: {
             const vm_addr_t addr = vm->regs[rs1] + imm;
-            uint32_t bits = (uint32_t)vm_read32(vm, addr);
-            vm->regs[rd] = (int32_t)bits;
+            uint32_t bits = (uint32_t) vm_read32(vm, addr);
+            vm->regs[rd] = (int32_t) bits;
             float f = reg_as_f32(vm->regs[rd]);
             update_logic_flags(vm, (f == 0.0f) ? 0 : (f < 0.0f ? -1 : 1));
             break;
         }
         case OP_FSTORE32: {
             const vm_addr_t addr = vm->regs[rs1] + imm;
-            vm_write32(vm, addr, (uint32_t)vm->regs[rd]);
+            vm_write32(vm, addr, (uint32_t) vm->regs[rd]);
             break;
         }
         case OP_FCMP: {
             float a = reg_as_f32(vm->regs[rd]);
             float b = reg_as_f32(vm->regs[rs1]);
             update_fcmp_flags(vm, a, b);
+            break;
+        }
+        case OP_ADDI: {
+            const int32_t a = vm->regs[rs1];
+            const int32_t b = imm;
+            const int32_t res = a + b;
+            vm->regs[rd] = res;
+            update_add_flags(vm, a, b, res);
+            break;
+        }
+        case OP_SUBI: {
+            const int32_t a = vm->regs[rs1];
+            const int32_t b = imm;
+            const int32_t res = a - b;
+            vm->regs[rd] = res;
+            update_sub_flags(vm, a, b, res);
+            break;
+        }
+        case OP_ANDI: {
+            vm->regs[rd] = vm->regs[rs1] & imm;
+            update_logic_flags(vm, vm->regs[rd]);
+            break;
+        }
+        case OP_ORI: {
+            vm->regs[rd] = vm->regs[rs1] | imm;
+            update_logic_flags(vm, vm->regs[rd]);
+            break;
+        }
+        case OP_XORI: {
+            vm->regs[rd] = vm->regs[rs1] ^ imm;
+            update_logic_flags(vm, vm->regs[rd]);
+            break;
+        }
+        case OP_SHLI: {
+            uint32_t sh = (uint32_t)imm & 31u;
+            vm->regs[rd] = (int32_t)((uint32_t)vm->regs[rs1] << sh);
+            update_logic_flags(vm, vm->regs[rd]);
+            break;
+        }
+        case OP_SHRI: {
+            uint32_t sh = (uint32_t)imm & 31u;
+            vm->regs[rd] = (int32_t)((uint32_t)vm->regs[rs1] >> sh);
+            update_logic_flags(vm, vm->regs[rd]);
             break;
         }
         default: {
@@ -452,7 +505,7 @@ void *vm_thread(void *arg) {
     while (!vm->halted) {
         if (vm->panic)
             return NULL;
-        vm_debug_pause_if_needed(vm, (uint32_t)vm->ip);
+        vm_debug_pause_if_needed(vm, (uint32_t) vm->ip);
         vm_handle_interrupts(vm);
         vm_instruction_case(vm);
         disk_tick(vm);
@@ -471,7 +524,6 @@ void display_loop(VM *vm) {
         if (frame_time < frame_delay) {
             SDL_Delay(frame_delay - frame_time);
         }
-        SDL_Delay(frame_delay);
     }
     display_shutdown();
 }
@@ -494,14 +546,28 @@ void vm_dump(const VM *vm, int mem_preview) {
 
     printf("Call Stack (top -> bottom):\n");
     for (int i = vm->csp; i < CALL_STACK_SIZE; i++) {
-        printf("[%d] = %d\n", i, vm->call_stack[i]);
+        const uint32_t addr = CALL_STACK_BASE + (uint32_t) i * 8;
+        const uint64_t v = (uint64_t) vm->memory[addr + 0]
+            | ((uint64_t) vm->memory[addr + 1] << 8)
+            | ((uint64_t) vm->memory[addr + 2] << 16)
+            | ((uint64_t) vm->memory[addr + 3] << 24)
+            | ((uint64_t) vm->memory[addr + 4] << 32)
+            | ((uint64_t) vm->memory[addr + 5] << 40)
+            | ((uint64_t) vm->memory[addr + 6] << 48)
+            | ((uint64_t) vm->memory[addr + 7] << 56);
+        printf("[%d] = %llu\n", i, (unsigned long long) v);
     }
     if (vm->csp == CALL_STACK_SIZE) {
         printf("<empty>\n");
     }
     printf("Data Stack (top -> bottom):\n");
     for (int i = vm->dsp; i < DATA_STACK_SIZE; i++) {
-        printf("[%d] = %d\n", i, vm->data_stack[i]);
+        const uint32_t addr = DATA_STACK_BASE + (uint32_t) i * 4;
+        const uint32_t v = (uint32_t) vm->memory[addr + 0]
+            | ((uint32_t) vm->memory[addr + 1] << 8)
+            | ((uint32_t) vm->memory[addr + 2] << 16)
+            | ((uint32_t) vm->memory[addr + 3] << 24);
+        printf("[%d] = %u\n", i, v);
     }
     if (vm->dsp == DATA_STACK_SIZE) {
         printf("<empty>\n");
@@ -548,8 +614,8 @@ VM *vm_create(size_t memory_size,
     register_time_mmio(vm);
     size_t prog_bytes = program_size * sizeof(uint64_t);
     uint32_t text_base = PROGRAM_BASE;
-    uint32_t data_base = PROGRAM_BASE + (uint32_t)prog_bytes;
-    uint32_t bss_base = data_base + (uint32_t)data_size;
+    uint32_t data_base = PROGRAM_BASE + (uint32_t) prog_bytes;
+    uint32_t bss_base = data_base + (uint32_t) data_size;
     uint32_t bss_size = 0;
 
     if (layout) {
@@ -563,21 +629,21 @@ VM *vm_create(size_t memory_size,
         }
     }
 
-    if ((size_t)text_base + prog_bytes > memory_size) {
+    if ((size_t) text_base + prog_bytes > memory_size) {
         panic("Program too large\n", vm);
         return vm;
     }
 
     memcpy(vm->memory + text_base, program, prog_bytes);
     if (data && data_size > 0) {
-        if ((size_t)data_base + data_size > memory_size) {
+        if ((size_t) data_base + data_size > memory_size) {
             panic("Data segment out of range\n", vm);
             return vm;
         }
         memcpy(vm->memory + data_base, data, data_size);
     }
     if (bss_size > 0) {
-        if ((size_t)bss_base + bss_size > memory_size) {
+        if ((size_t) bss_base + bss_size > memory_size) {
             panic("BSS segment out of range\n", vm);
             return vm;
         }
@@ -604,6 +670,8 @@ void vm_destroy(VM *vm) {
     disk_close(vm);
     if (vm->memory)
         free(vm->memory);
+    if (vm->fb)
+        free(vm->fb);
     free(vm);
 }
 
@@ -630,11 +698,11 @@ int main() {
     size_t program_size = sizeof(program) / sizeof(program[0]);
     */
 
-    const char* filename = "lifegame.bin";
+    const char *filename = "typing.bin";
     size_t program_size = 0;
     size_t data_size = 0;
-    uint64_t* program = NULL;
-    uint8_t* data = NULL;
+    uint64_t *program = NULL;
+    uint8_t *data = NULL;
     ProgramLayout layout;
 
     if (!load_program_single(filename, &program, &program_size, &data, &data_size, &layout)) {

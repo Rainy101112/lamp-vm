@@ -88,10 +88,8 @@ struct VM{
     int panic;
     unsigned int flags;
 
-    int data_stack[DATA_STACK_SIZE];
     int dsp;
 
-    int call_stack[CALL_STACK_SIZE];
     int csp;
 
     int isp;
@@ -181,7 +179,14 @@ enum {
     OP_FTOI,
     OP_FLOAD32,
     OP_FSTORE32,
-    OP_INC
+    OP_INC,
+    OP_ADDI,
+    OP_SUBI,
+    OP_ANDI,
+    OP_ORI,
+    OP_XORI,
+    OP_SHLI,
+    OP_SHRI,
 };
 
 void vm_dump(const VM *vm, int mem_preview);
