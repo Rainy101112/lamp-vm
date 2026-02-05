@@ -10,6 +10,7 @@
             panic("IP out of bounds\n", vm);                                                       \
             return;                                                                                \
         }                                                                                          \
+        (vm)->last_ip = (vm)->ip;                                                                  \
         uint64_t inst = vm_read64(vm, vm->ip);                                                     \
         (vm)->ip += 8;                                                                             \
         op = (inst >> 56) & 0xFF;                                                                  \

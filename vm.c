@@ -648,9 +648,26 @@ VM *vm_create(size_t memory_size,
             return vm;
         }
         memset(vm->memory + bss_base, 0, bss_size);
+        {
+            size_t sample = bss_size < 64 ? bss_size : 64;
+            size_t bad = 0;
+            for (size_t i = 0; i < sample; i++) {
+                if (vm->memory[bss_base + i] != 0) {
+                    bad++;
+                }
+            }
+            printf("BSS clear: base=0x%08x size=%u first=%u last=%u bad_in_first_%zu=%zu\n",
+                   bss_base,
+                   bss_size,
+                   vm->memory[bss_base],
+                   vm->memory[bss_base + bss_size - 1],
+                   sample,
+                   bad);
+        }
     }
 
     vm->ip = text_base;
+    vm->last_ip = text_base;
     vm->csp = CALL_STACK_SIZE;
     vm->dsp = DATA_STACK_SIZE;
     vm->isp = ISR_STACK_SIZE;
