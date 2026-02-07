@@ -82,6 +82,16 @@ static const char *op_name(uint8_t op) {
         [OP_FLOAD32] = "FLOAD32",
         [OP_FSTORE32] = "FSTORE32",
         [OP_INC] = "INC",
+        [OP_CAS] = "CAS",
+        [OP_XADD] = "XADD",
+        [OP_XCHG] = "XCHG",
+        [OP_LDAR] = "LDAR",
+        [OP_STLR] = "STLR",
+        [OP_FENCE] = "FENCE",
+        [OP_PAUSE] = "PAUSE",
+        [OP_STARTAP] = "STARTAP",
+        [OP_IPI] = "IPI",
+        [OP_CPUID] = "CPUID",
     };
     return names[op] ? names[op] : "UNKNOWN";
 }
@@ -192,12 +202,15 @@ static void print_help(void) {
 
 static void interactive_wait(VM *vm) {
     VM_Debug *dbg = vm->debug;
+    VCPU *cpu = vm_current_cpu(vm);
+    if (!cpu)
+        return;
     char line[256];
     uint8_t op = 0, rd = 0, rs1 = 0, rs2 = 0;
     int32_t imm = 0;
-    decode_at(vm, (uint32_t)vm->ip, &op, &rd, &rs1, &rs2, &imm);
+    decode_at(vm, (uint32_t)cpu->ip, &op, &rd, &rs1, &rs2, &imm);
     printf("\n[debug] pause at IP=0x%08x op=%s rd=%u rs1=%u rs2=%u imm=%d\n",
-           (uint32_t)vm->ip, op_name(op), rd, rs1, rs2, imm);
+           (uint32_t)cpu->ip, op_name(op), rd, rs1, rs2, imm);
     print_help();
 
     while (fgets(line, sizeof(line), stdin)) {

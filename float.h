@@ -29,17 +29,23 @@ static inline bool f32_is_nan(float f) {
     return isnan(f);
 }
 static inline void clear_all_flags(VM *vm) {
-    vm->flags &= ~(FLAG_ZF | FLAG_SF | FLAG_CF | FLAG_OF);
+    VCPU *cpu = vm_current_cpu(vm);
+    if (!cpu)
+        return;
+    cpu->flags &= ~(FLAG_ZF | FLAG_SF | FLAG_CF | FLAG_OF);
 }
 static inline void update_fcmp_flags(VM *vm, float a , float b) {
+    VCPU *cpu = vm_current_cpu(vm);
+    if (!cpu)
+        return;
     clear_all_flags(vm);
 
     if (f32_is_nan(a) || f32_is_nan(b)) {
-        vm->flags |= FLAG_OF;
+        cpu->flags |= FLAG_OF;
         return;
     }
-    if (a == b) vm->flags |= FLAG_ZF;
-    if (a < b) vm->flags |= FLAG_SF;
-    if (a > b) vm->flags |= FLAG_CF;
+    if (a == b) cpu->flags |= FLAG_ZF;
+    if (a < b) cpu->flags |= FLAG_SF;
+    if (a > b) cpu->flags |= FLAG_CF;
 }
 #endif //VM_FLOAT_H

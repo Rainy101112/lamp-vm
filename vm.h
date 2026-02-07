@@ -13,12 +13,14 @@
 #include <stdio.h>
 #include <time.h>
 #include <pthread.h>
+#include <stdatomic.h>
 
 static inline uint64_t INST(uint8_t op, uint8_t rd, uint8_t rs1, uint8_t rs2, uint32_t imm) {
     return ((uint64_t)op << 56 | (uint64_t)rd << 48 | (uint64_t)rs1 << 40 | (uint64_t)rs2 << 32) |
         imm;
 }
 typedef struct VM VM;
+typedef struct VCPU VCPU;
 #ifdef VM_DEBUG
 typedef struct VM_Debug VM_Debug;
 #endif
@@ -80,21 +82,30 @@ typedef struct {
     mmio_read32_fn read32;
     mmio_write32_fn write32;
 } MMIO_Device;
-struct VM{
+struct VCPU {
     uint32_t regs[REG_COUNT];
-    uint64_t *code;
     size_t ip;
     size_t last_ip;
-    size_t execution_times;
+    unsigned int flags;
+    int dsp;
+    int csp;
+    int isp;
+    int in_interrupt;
+    uint64_t execution_times;
+    int core_id;
+    vm_addr_t call_stack_base;
+    vm_addr_t data_stack_base;
+    vm_addr_t isr_stack_base;
+    int is_bsp;
+};
+
+extern _Thread_local VCPU *vm_tls_vcpu;
+
+static inline VCPU *vm_current_cpu(VM *vm);
+
+struct VM{
     int halted;
     int panic;
-    unsigned int flags;
-
-    int dsp;
-
-    int csp;
-
-    int isp;
     uint8_t *memory;
     size_t memory_size;
 
@@ -108,8 +119,7 @@ struct VM{
 
     Disk disk;
 
-    int interrupt_flags[IVT_SIZE];
-    int in_interrupt;
+    atomic_int *interrupt_flags;
 
     uint64_t start_realtime_ns;
     uint64_t start_monotonic_ns;
@@ -122,10 +132,39 @@ struct VM{
     MMIO_Device *mmio_devices[MAX_MMIO_DEVICES];
     int mmio_count;
 
+    /*
+     * SMP runtime configuration and state.
+     */
+    int smp_cores;
+    VCPU *cpus;
+    atomic_bool *core_released;
+    atomic_uint_fast64_t total_execution_times;
+    pthread_mutex_t shared_lock;
+    vm_addr_t stack_pool_base;
+    size_t stack_pool_size;
+
 #ifdef VM_DEBUG
     VM_Debug *debug;
 #endif
 };
+
+static inline VCPU *vm_current_cpu(VM *vm) {
+    if (vm_tls_vcpu)
+        return vm_tls_vcpu;
+    if (!vm || !vm->cpus)
+        return NULL;
+    return &vm->cpus[0];
+}
+
+static inline void vm_shared_lock(VM *vm) {
+    if (vm)
+        pthread_mutex_lock(&vm->shared_lock);
+}
+
+static inline void vm_shared_unlock(VM *vm) {
+    if (vm)
+        pthread_mutex_unlock(&vm->shared_lock);
+}
 enum {
     OP_ADD = 0x01,
     OP_SUB = 0x02,
@@ -189,6 +228,16 @@ enum {
     OP_XORI = 0x3C,
     OP_SHLI = 0x3D,
     OP_SHRI = 0x3E,
+    OP_CAS = 0x3F,
+    OP_XADD = 0x40,
+    OP_XCHG = 0x41,
+    OP_LDAR = 0x42,
+    OP_STLR = 0x43,
+    OP_FENCE = 0x44,
+    OP_PAUSE = 0x45,
+    OP_STARTAP = 0x46,
+    OP_IPI = 0x47,
+    OP_CPUID = 0x48,
 };
 
 void vm_dump(const VM *vm, int mem_preview);

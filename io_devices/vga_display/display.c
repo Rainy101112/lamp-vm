@@ -24,7 +24,9 @@ int vga_display_init(void) {
 }
 
 static void serial_rx_push(VM *vm, uint8_t c) {
+    vm_shared_lock(vm);
     if (vm->io[SCREEN_ATTRIBUTE] & SERIAL_STATUS_RX_READY) {
+        vm_shared_unlock(vm);
         return;
     }
     vm->io[KEYBOARD] = c;
@@ -32,6 +34,7 @@ static void serial_rx_push(VM *vm, uint8_t c) {
     if ((vm->io[SCREEN_ATTRIBUTE] >> 8) & SERIAL_CTRL_RX_INT_ENABLE) {
         trigger_interrupt(vm, INT_SERIAL);
     }
+    vm_shared_unlock(vm);
 }
 
 void display_update(VM *vm) {

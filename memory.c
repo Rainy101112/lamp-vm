@@ -35,28 +35,38 @@ static inline void memcheck_align(VM *vm, vm_addr_t addr, size_t align, const ch
 #endif
 
 uint8_t vm_read8(VM *vm, vm_addr_t addr) {
+    vm_shared_lock(vm);
     size_t fb_index = 0;
     if (fb_byte_index(vm, addr, &fb_index)) {
-        return ((uint8_t *) vm->fb)[fb_index];
+        uint8_t v = ((uint8_t *) vm->fb)[fb_index];
+        vm_shared_unlock(vm);
+        return v;
     }
     if (!in_ram(vm, addr, 1)) {
         panic(panic_format("READ8 out of bounds: 0x%08x", addr), vm);
+        vm_shared_unlock(vm);
         return 0;
     }
-    return vm->memory[addr];
+    uint8_t v = vm->memory[addr];
+    vm_shared_unlock(vm);
+    return v;
 }
 
 uint32_t vm_read32(VM *vm, vm_addr_t addr) {
+    vm_shared_lock(vm);
 #ifdef VM_MEMCHECK
     memcheck_align(vm, addr, 4, "READ32");
 #endif
     MMIO_Device *dev = find_mmio(vm, addr);
     if (dev) {
-        return vm_mmio_read32(vm, addr);
+        uint32_t v = vm_mmio_read32(vm, addr);
+        vm_shared_unlock(vm);
+        return v;
     }
 
     if (!in_ram(vm, addr, 4)) {
         panic(panic_format("READ32 out of bounds: 0x%08x", addr), vm);
+        vm_shared_unlock(vm);
         return 0;
     }
 
@@ -65,6 +75,7 @@ uint32_t vm_read32(VM *vm, vm_addr_t addr) {
     v |= vm->memory[addr + 1] << 8;
     v |= vm->memory[addr + 2] << 16;
     v |= vm->memory[addr + 3] << 24;
+    vm_shared_unlock(vm);
     return v;
 }
 
@@ -78,32 +89,39 @@ uint64_t vm_read64(VM *vm, vm_addr_t addr) {
 }
 
 void vm_write8(VM *vm, vm_addr_t addr, uint8_t value) {
+    vm_shared_lock(vm);
     // intercept mmio request
     size_t fb_index = 0;
     if (fb_byte_index(vm, addr, &fb_index)) {
         ((uint8_t *) vm->fb)[fb_index] = value;
+        vm_shared_unlock(vm);
         return;
     }
 
     if (!in_ram(vm, addr, 1)) {
         panic(panic_format("WRITE8 out of bounds: 0x%08x", addr), vm);
+        vm_shared_unlock(vm);
         return;
     }
 
     vm->memory[addr] = value;
+    vm_shared_unlock(vm);
 }
 
 void vm_write32(VM *vm, vm_addr_t addr, uint32_t value) {
+    vm_shared_lock(vm);
 #ifdef VM_MEMCHECK
     memcheck_align(vm, addr, 4, "WRITE32");
 #endif
     MMIO_Device *dev = find_mmio(vm, addr);
     if (dev && dev->write32) {
         dev->write32(vm, addr, value);
+        vm_shared_unlock(vm);
         return;
     }
     if (!in_ram(vm, addr, 4)) {
         panic(panic_format("WRITE32 out of bounds: 0x%08x", addr), vm);
+        vm_shared_unlock(vm);
         return;
     }
 
@@ -111,14 +129,17 @@ void vm_write32(VM *vm, vm_addr_t addr, uint32_t value) {
     vm->memory[addr + 1] = (value >> 8) & 0xFF;
     vm->memory[addr + 2] = (value >> 16) & 0xFF;
     vm->memory[addr + 3] = (value >> 24) & 0xFF;
+    vm_shared_unlock(vm);
 }
 
 void vm_write64(VM *vm, vm_addr_t addr, uint64_t value) {
+    vm_shared_lock(vm);
 #ifdef VM_MEMCHECK
     memcheck_align(vm, addr, 8, "WRITE64");
 #endif
     if (!in_ram(vm, addr, 8)) {
         panic(panic_format("WRITE64 out of bounds: 0x%08x", addr), vm);
+        vm_shared_unlock(vm);
         return;
     }
     vm->memory[addr + 0] = (value >> 0) & 0xFF;
@@ -129,4 +150,5 @@ void vm_write64(VM *vm, vm_addr_t addr, uint64_t value) {
     vm->memory[addr + 5] = (value >> 40) & 0xFF;
     vm->memory[addr + 6] = (value >> 48) & 0xFF;
     vm->memory[addr + 7] = (value >> 56) & 0xFF;
+    vm_shared_unlock(vm);
 }

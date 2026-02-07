@@ -9,6 +9,7 @@ void vm_handle_interrupts(VM *vm);
 void init_ivt(VM *vm);
 void register_isr(VM *vm, uint32_t int_no, uint64_t isr_ip);
 void trigger_interrupt(VM *vm, uint32_t int_no);
+void trigger_interrupt_target(VM *vm, int core_id, uint32_t int_no);
 
 void vm_enter_interrupt(VM *vm, uint32_t int_no);
 void vm_iret(VM *vm);

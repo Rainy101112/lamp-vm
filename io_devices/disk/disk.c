@@ -6,6 +6,7 @@
 
 #include <pthread.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "../../panic.h"
 
@@ -47,12 +48,31 @@ void* disk_worker(void *arg) {
             fprintf(stderr, "[Disk] DMA Violation @ Addr 0x%lx, Count %d\n", mem_addr, count);
         } else {
             fseek(vm->disk.fp, lba * DISK_SECTOR_SIZE, SEEK_SET);
+            size_t bytes = (size_t)count * DISK_SECTOR_SIZE;
 
             if (cmd == DISK_CMD_READ) {
-                fread(&vm->memory[mem_addr], DISK_SECTOR_SIZE, count, vm->disk.fp);
+                uint8_t *buf = malloc(bytes);
+                if (!buf) {
+                    fprintf(stderr, "[Disk] OOM during READ DMA\n");
+                } else {
+                    fread(buf, DISK_SECTOR_SIZE, count, vm->disk.fp);
+                    vm_shared_lock(vm);
+                    memcpy(&vm->memory[mem_addr], buf, bytes);
+                    vm_shared_unlock(vm);
+                    free(buf);
+                }
             } else if (cmd ==DISK_CMD_WRITE) {
-                fwrite(&vm->memory[mem_addr], DISK_SECTOR_SIZE, count, vm->disk.fp);
-                fflush(vm->disk.fp);
+                uint8_t *buf = malloc(bytes);
+                if (!buf) {
+                    fprintf(stderr, "[Disk] OOM during WRITE DMA\n");
+                } else {
+                    vm_shared_lock(vm);
+                    memcpy(buf, &vm->memory[mem_addr], bytes);
+                    vm_shared_unlock(vm);
+                    fwrite(buf, DISK_SECTOR_SIZE, count, vm->disk.fp);
+                    fflush(vm->disk.fp);
+                    free(buf);
+                }
             }
         }
 

@@ -10,7 +10,7 @@ and **32-bit general-purpose registers**, designed for system-level and educatio
 - Register width: 32 bit
 - Address space: 32 bit, byte-addressed
 - Byte order: Little Endian
-- Execution model: Sequential execution with interrupt support
+- Execution model: SMP-capable (BSP/AP) with interrupt support
 
 ---
 
@@ -90,6 +90,7 @@ This rule is fixed and applies to all current and future instructions.
 - `INC`
 - `ADDI`
 - `SUBI`
+- `XADD`
 
 ### Instructions that update **ZF and SF only**, and **clear CF and OF**
 
@@ -124,6 +125,8 @@ This rule is fixed and applies to all current and future instructions.
 - `LOADX32`
 - `POP`
 - `FTOI` (when input is finite and in-range)
+- `XCHG`
+- `LDAR`
 
 ### Instructions that do **not guarantee FLAGS state**
 
@@ -140,6 +143,9 @@ This rule is fixed and applies to all current and future instructions.
 - `MEMCPY`
 - `IN`
 - `OUT`
+- `STLR`
+- `FENCE`
+- `PAUSE`
 
 Programs must not rely on FLAGS after these instructions.
 
@@ -216,6 +222,98 @@ SAR: rd = (int32)rs1 >> sh
 
 - Update ZF and SF
 - Clear CF and OF
+
+---
+
+### CAS rd, rs1, rs2, imm
+
+Atomic compare-and-swap on 32-bit memory word:
+
+```
+addr = rs1 + imm
+old  = MEM32[addr]
+if (old == rd_before) MEM32[addr] = rs2
+rd = old
+```
+
+- Atomic RMW
+- Full fence semantics (sequentially consistent)
+- Flags: success => `ZF=1`, failure => `ZF=0` (other flags cleared)
+
+---
+
+### XADD rd, rs1, rs2, imm
+
+Atomic fetch-add on 32-bit memory word:
+
+```
+addr = rs1 + imm
+old  = MEM32[addr]
+MEM32[addr] = old + rs2
+rd = old
+```
+
+- Atomic RMW
+- Full fence semantics (sequentially consistent)
+- Flags updated as integer ADD of `(old + rs2)`
+
+---
+
+### XCHG rd, rs1, rs2, imm
+
+Atomic exchange on 32-bit memory word:
+
+```
+addr = rs1 + imm
+old  = MEM32[addr]
+MEM32[addr] = rs2
+rd = old
+```
+
+- Atomic RMW
+- Full fence semantics (sequentially consistent)
+
+---
+
+### LDAR rd, rs1, imm
+
+Acquire-load from 32-bit memory word:
+
+```
+addr = rs1 + imm
+rd = MEM32[addr]
+```
+
+- Load with acquire semantics
+
+---
+
+### STLR rd, rs1, imm
+
+Release-store to 32-bit memory word:
+
+```
+addr = rs1 + imm
+MEM32[addr] = rd
+```
+
+- Store with release semantics
+
+---
+
+### FENCE
+
+Full memory fence.
+
+- Sequentially consistent fence semantics
+
+---
+
+### PAUSE
+
+Hint instruction for spin-wait loops.
+
+- May yield host thread execution
 
 ---
 
@@ -484,6 +582,29 @@ Out-of-range access causes VM panic.
 
 Stops VM execution.
 
+### CPUID rd
+
+Stores current core id into `rd`.
+
+### STARTAP rd, rs1, imm
+
+Starts an AP core:
+
+```
+target = rd
+entry  = rs1 + imm
+```
+
+- Only BSP (`core 0`) can start APs.
+- Invalid target core id is ignored.
+
+### IPI rd, rs1
+
+Sends interrupt `rs1` to target core `rd`.
+
+- Targeted, per-core interrupt delivery.
+- Invalid target or vector is ignored.
+
 ---
 
 ## 15. Stack Operations
@@ -508,6 +629,7 @@ The following are undefined and may cause VM panic:
 - Out-of-range memory access
 - Invalid IO port
 - Misaligned LOAD32/STORE32
+- Misaligned atomic address (`CAS/XADD/XCHG/LDAR/STLR`)
 
 ---
 

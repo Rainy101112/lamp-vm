@@ -6,6 +6,7 @@
 void accept_io(VM *vm, const int addr, const int value) {
     if (addr < 0 || addr >= IO_SIZE)
         return;
+    vm_shared_lock(vm);
 
     switch (addr) {
     case SCREEN: {
@@ -44,4 +45,5 @@ void accept_io(VM *vm, const int addr, const int value) {
         vm->io[addr] = value;
         break;
     }
+    vm_shared_unlock(vm);
 }

@@ -9,6 +9,57 @@ done if you want to compile it by yourself.
 
 Assembler could be found at (lampvm-assembler)[https://github.com/glowingstone124/lampvm-toolchain]
 
+## Run
+
+```bash
+./vm --bin boot.bin --smp 1
+```
+
+Arguments:
+- `--bin <file>`: program binary path (default: `boot.bin`)
+- `--smp <cores>`: CPU worker thread count in `[1, 64]` (default: `1`)
+- `--selftest`: run built-in SMP/atomic self-tests and exit
+
+SMP note:
+- `--smp > 1` enables an experimental mode with multiple CPU worker threads.
+- Current implementation uses per-core architectural state (registers/IP/flags/stacks/interrupt context).
+- Cores share memory/MMIO/IO and device model.
+
+### SMP Memory Model
+> Old programs built for single core which don't operate with hard coded stack addr *should* run correctly.
+> For max compatibility, please set --smp 1.
+- Shared memory model is **sequentially consistent (SC)** at VM level.
+- All VM memory/MMIO/IO accesses are serialized through a shared VM lock.
+- Per-core architectural state (`regs/ip/flags/stacks`) is private to each core and not shared.
+- Interrupt pending bits are per-core atomic flags; `IPI` delivers to a specific target core.
+
+### SMP Stack Layout
+
+- Stacks are stored in VM memory addresses (not host-side arrays).
+- For `--smp 1`, legacy stack addresses are kept:
+  - `CALL_STACK_BASE`, `DATA_STACK_BASE`, `ISR_STACK_BASE`
+- For `--smp > 1`, each core gets a dedicated stack region near the top of RAM.
+- VM validates that program/data/bss do not overlap the SMP stack pool at startup.
+
+### BSP/AP Model
+
+- `CPU0` is the BSP and starts executing immediately.
+- `CPU1..N-1` are APs and remain parked until BSP starts them.
+- AP startup is controlled by instruction `STARTAP`.
+- Runtime core identity is exposed by instruction `CPUID`.
+
+### Atomic Instructions
+
+Recommended synchronization path is ISA instructions (not I/O ports):
+
+- `CAS`, `XADD`, `XCHG` (atomic RMW)
+- `LDAR`, `STLR` (acquire/release)
+- `FENCE` (full fence)
+- `PAUSE` (spin-wait hint)
+- `IPI` (targeted inter-processor interrupt)
+
+For all atomic memory instructions, unaligned addresses trigger VM panic.
+
 ## Program Binary Format
 
 The VM expects a single program binary with a 24-byte header followed by text and data:

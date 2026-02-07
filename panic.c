@@ -16,11 +16,16 @@ const char *panic_format(const char *fmt, ...) {
 }
 
 void panic(const char *msg, VM *vm) {
-    printf("VM panic detected. %s\n @ %lu clock cycle, IP = %lu", msg, vm->execution_times, vm->ip);
+    VCPU *cpu = vm_current_cpu(vm);
+    uint64_t cycles = vm ? atomic_load(&vm->total_execution_times) : 0;
+    size_t ip_now = cpu ? cpu->ip : 0;
+    size_t last_ip = cpu ? cpu->last_ip : 0;
+    printf("VM panic detected. %s\n @ %lu clock cycle, IP = %lu",
+           msg, (unsigned long)cycles, (unsigned long)ip_now);
     if (vm && vm->memory) {
         const size_t window = 6;
-        size_t start = vm->last_ip >= window * 8 ? vm->last_ip - window * 8 : 0;
-        size_t end = vm->last_ip + 8 <= vm->memory_size ? vm->last_ip + 8 : vm->memory_size;
+        size_t start = last_ip >= window * 8 ? last_ip - window * 8 : 0;
+        size_t end = last_ip + 8 <= vm->memory_size ? last_ip + 8 : vm->memory_size;
         printf("\nLast inst window:\n");
         for (size_t ip = start; ip + 8 <= end; ip += 8) {
             const uint8_t *p = vm->memory + ip;
@@ -39,7 +44,7 @@ void panic(const char *msg, VM *vm) {
             int32_t imm = (int32_t)(inst & 0xFFFFFFFF);
             printf("  0x%zx: op=%u rd=%u rs1=%u rs2=%u imm=%d (0x%08x)%s\n",
                    ip, op, rd, rs1, rs2, imm, (uint32_t)imm,
-                   ip == vm->last_ip ? "  <--" : "");
+                   ip == last_ip ? "  <--" : "");
         }
     }
     printf("Creating VM dump...");
