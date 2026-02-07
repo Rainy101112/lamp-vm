@@ -1,145 +1,161 @@
 # lamp-vm
 
-## Compile
+A small 32-bit VM with SMP support, MMIO devices, interrupts, and a custom ISA.
 
-The project's Cmake file is currently forced to compile in aarch64 mode since I am using a Macbook, some changes must be
-done if you want to compile it by yourself.
+## Current Status
 
-## Features
+- VM boots and runs custom binaries (`--bin`).
+- SMP core bring-up works (`STARTAP`, `CPUID`, `IPI`).
+- Built-in selftests pass in current tree:
+  - `startap_cpuid`
+  - `ipi`
+- Atomic ISA instructions are implemented with C11 atomic semantics on aligned 32-bit RAM words.
 
-Assembler could be found at (lampvm-assembler)[https://github.com/glowingstone124/lampvm-toolchain]
+## Toolchain
+
+Assembler/toolchain project:
+- https://github.com/glowingstone124/lampvm-toolchain
+- https://github.com/glowingstone124/llvm-project (Custom LLVM backend)
+
+## Build
+
+### Requirements
+
+- CMake >= 3.20
+- C11 compiler
+- SDL2
+- pthreads (via `Threads::Threads`)
+
+### Commands
+
+```bash
+cmake -S . -B build
+cmake --build build -j
+```
+
+Notes:
+- On Apple Silicon, CMake is configured to build `arm64`.
+- Linux links `libm` and enables `_POSIX_C_SOURCE=200809L`.
 
 ## Run
 
 ```bash
-./vm --bin boot.bin --smp 1
+./build/vm --bin boot.bin --smp 1
 ```
 
 Arguments:
 - `--bin <file>`: program binary path (default: `boot.bin`)
 - `--smp <cores>`: CPU worker thread count in `[1, 64]` (default: `1`)
-- `--selftest`: run built-in SMP/atomic self-tests and exit
+- `--selftest`: run built-in SMP tests and exit
 
-SMP note:
-- `--smp > 1` enables an experimental mode with multiple CPU worker threads.
-- Current implementation uses per-core architectural state (registers/IP/flags/stacks/interrupt context).
-- Cores share memory/MMIO/IO and device model.
+Run selftests:
 
-### SMP Memory Model
-> Old programs built for single core which don't operate with hard coded stack addr *should* run correctly.
-> For max compatibility, please set --smp 1.
-- Shared memory model is **sequentially consistent (SC)** at VM level.
-- All VM memory/MMIO/IO accesses are serialized through a shared VM lock.
-- Per-core architectural state (`regs/ip/flags/stacks`) is private to each core and not shared.
-- Interrupt pending bits are per-core atomic flags; `IPI` delivers to a specific target core.
+```bash
+./build/vm --selftest
+```
 
-### SMP Stack Layout
+## SMP Execution Model
 
-- Stacks are stored in VM memory addresses (not host-side arrays).
-- For `--smp 1`, legacy stack addresses are kept:
-  - `CALL_STACK_BASE`, `DATA_STACK_BASE`, `ISR_STACK_BASE`
-- For `--smp > 1`, each core gets a dedicated stack region near the top of RAM.
-- VM validates that program/data/bss do not overlap the SMP stack pool at startup.
+- `CPU0` is BSP and starts immediately.
+- `CPU1..N-1` are APs and stay parked until `STARTAP`.
+- Each core has private architectural state:
+  - `regs/ip/flags`
+  - call/data/ISR stack pointers and interrupt context
+- Cores share RAM/MMIO/IO/device model.
 
-### BSP/AP Model
+## Memory and Concurrency Semantics
 
-- `CPU0` is the BSP and starts executing immediately.
-- `CPU1..N-1` are APs and remain parked until BSP starts them.
-- AP startup is controlled by instruction `STARTAP`.
-- Runtime core identity is exposed by instruction `CPUID`.
+### Non-atomic memory path
 
-### Atomic Instructions
+- Normal `LOAD/STORE/LOAD32/STORE32/...` go through the VM memory API.
+- Shared VM state is serialized by a global VM lock.
 
-Recommended synchronization path is ISA instructions (not I/O ports):
+### Atomic ISA path
 
-- `CAS`, `XADD`, `XCHG` (atomic RMW)
-- `LDAR`, `STLR` (acquire/release)
-- `FENCE` (full fence)
-- `PAUSE` (spin-wait hint)
-- `IPI` (targeted inter-processor interrupt)
+Atomic instructions operate on aligned 32-bit RAM words using C11 atomics:
 
-For all atomic memory instructions, unaligned addresses trigger VM panic.
+- `CAS`
+- `XADD`
+- `XCHG`
+- `LDAR` (acquire load)
+- `STLR` (release store)
+- `FENCE` (SC fence)
+
+Rules:
+- Unaligned atomic addresses panic.
+- Atomic ops on MMIO addresses panic.
+- `atomic_thread_fence` is only used with atomic operations; normal memory is not implicitly upgraded to atomic by fences.
+
+## Stack Layout
+
+- Stacks are stored in VM RAM (not host-side arrays).
+- `--smp 1`: legacy fixed bases are used.
+- `--smp > 1`: per-core stack regions are allocated near top of RAM.
+- VM checks image/stack pool overlap at startup.
 
 ## Program Binary Format
 
-The VM expects a single program binary with a 24-byte header followed by text and data:
+Single binary format:
 
-- Header: 6 little-endian `u32` values
-  1. `TEXT_BASE`
-  2. `TEXT_SIZE` (bytes)
-  3. `DATA_BASE`
-  4. `DATA_SIZE` (bytes)
-  5. `BSS_BASE`
-  6. `BSS_SIZE` (bytes)
-- Text section: instruction stream, `u64` little-endian
-- Data section: raw bytes
+1. 24-byte header (`u32` little-endian x6)
+2. Text section (`u64` little-endian instructions)
+3. Data section (raw bytes)
 
-This matches the output from the toolchain.
+Header fields:
 
-### Panic
+1. `TEXT_BASE`
+2. `TEXT_SIZE` (bytes)
+3. `DATA_BASE`
+4. `DATA_SIZE` (bytes)
+5. `BSS_BASE`
+6. `BSS_SIZE` (bytes)
 
-VM will panic if a bad instruction was executed, and a debug message will be print.
+## Memory Map (Default)
 
-### Debug (optional, compile-time)
+| Region | Start | End | Size | Purpose |
+|---|---|---|---|---|
+| IVT | `0x000000` | `0x0007FF` | 2048 B | 256 vectors x 8B |
+| CALL_STACK | `0x000800` | `0x000FFF` | 2048 B | Call stack |
+| DATA_STACK | `0x001000` | `0x0017FF` | 2048 B | Data stack |
+| ISR_STACK | `0x001800` | `0x001FFF` | 2048 B | Interrupt stack |
+| TIME MMIO | `0x002000` | `0x00201B` | 28 B | time registers |
+| PROGRAM | `0x00201C` | `FB_BASE-1` | variable | text/data/bss |
+| FrameBuffer | `FB_BASE` | `FB_BASE+FB_SIZE-1` | variable | video buffer |
 
-Enable with CMake:
+## Debug Build (Optional)
+
+Enable debug features:
 
 ```bash
-cmake -DVM_DEBUG=ON ..
+cmake -S . -B build -DVM_DEBUG=ON
+cmake --build build -j
 ```
 
-When enabled, the VM includes:
-- Instruction statistics (per-opcode counts).
-- Memory alignment checks for 32/64-bit reads and writes.
-- Interactive single-step and breakpoints.
+When enabled:
+- instruction statistics
+- alignment checks
+- interactive step/breakpoint debugger
 
-Runtime controls (only when built with `VM_DEBUG=ON`):
-- `VM_DEBUG_STEP=1` or `VM_STEP=1` starts in single-step mode.
-- `VM_DEBUG_PAUSE=1` pauses immediately at start.
-- `VM_BREAKPOINTS=0x201C,0x2024` sets breakpoints (comma/space-separated, hex or decimal).
+Runtime debug env vars:
+- `VM_DEBUG_STEP=1` or `VM_STEP=1`
+- `VM_DEBUG_PAUSE=1`
+- `VM_BREAKPOINTS=0x201C,0x2024`
 
-Interactive debugger commands:
-- `s` step, `c` continue
-- `r` registers
-- `m <addr> <len>` memory dump
-- `b <addr>` add breakpoint, `d <addr>` remove breakpoint, `l` list breakpoints
-- `q` quit VM
+## ISA
 
-### Current Memory Mapping
+See:
+- `docs/isa.md`
 
-| Type        | Start Addr        | End Addr    | Size    | Usage                            |
-|-------------|-------------------|-------------|---------|----------------------------------|
-| IVT         | 0x000000          | 0x0007FF    | 2048 B  | IVT, 8B each                     |
-| CALL_STACK  | 0x000800          | 0x000FFF    | 2048 B  | Call Stack                       |
-| DATA_STACK  | 0x001000          | 0x0017FF    | 2048 B  | Data Stack                       |
-| ISR_STACK   | 0x001800          | 0x001FFF    | 2048 B  | Interrupt Stack (saved context)  |
-| Timedate    | 0x002000          | 0x00201B    | 28 B    | Time (control + 3×u64)           |
-| PROGRAM     | 0x00201C          | FB start    | ~4 MB   | Program                          |
-| FrameBuffer | MEM_END - FB_SIZE | MEM_END - 1 | depends | FrameBuffer                      |
+## Kernel Developing
 
+It's time to develop a kernel for this platform.
 
-...
+Recommended start order:
 
-### Interrupt Tables(IVT) Mapping
+1. Bring up single-core kernel first (`--smp 1`): boot, trap/interrupt entry, timer tick, syscall ABI.
+2. Add scheduler and memory management in single-core mode.
+3. Enable SMP bring-up (`STARTAP`), then add spinlocks and per-core data.
+4. Use atomic ISA ops (`LDAR/STLR/CAS/XADD`) for lock primitives.
 
-In default, LampVM supports 256 interrupt ids. This vector starts at memory address 0x0, since memory is actually a
-segment on heap space.
-
-Keyboard Input now has the highest priority, it's located on 0x00. Edit 0x00 first in your program to configure the
-address handling Keyboard Interrupt.
-
-## Roadmap
-
-Write Wiki
-
-Implements a standard VGA-like screen.
-
-Implements a virtual hard disk.
-
-Create a assembler and make a subset of C.
-
-## Instructions
-
-### Instructions Mapping
-
-Please see [ISA](docs/isa.md)
+Practical note:
+- If you want fastest iteration, keep kernel bring-up on `--smp 1` until trap path and basic drivers are stable, then turn on SMP.
