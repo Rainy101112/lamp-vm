@@ -855,7 +855,7 @@ VM *vm_create(size_t memory_size,
     pthread_mutexattr_destroy(&shared_attr);
 
     vm->memory_size = memory_size;
-    vm->memory = malloc(memory_size);
+    vm->memory = aligned_alloc(4, memory_size);
     if (!vm->memory) {
         free(vm->interrupt_flags);
         free(vm->core_released);
