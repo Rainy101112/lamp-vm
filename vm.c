@@ -541,56 +541,35 @@ void vm_instruction_case(VM *vm) {
             ensure_atomic_aligned_or_panic(vm, addr, "CAS");
             const uint32_t expected = (uint32_t)cpu->regs[rd];
             const uint32_t desired = (uint32_t)cpu->regs[rs2];
-            vm_shared_lock(vm);
-            atomic_thread_fence(memory_order_seq_cst);
-            const uint32_t old = vm_read32(vm, addr);
-            if (old == expected) {
-                vm_write32(vm, addr, desired);
-                set_cas_flags(vm, 1);
-            } else {
-                set_cas_flags(vm, 0);
-            }
+            int success = 0;
+            const uint32_t old = vm_atomic_compare_exchange32_seqcst(vm, addr, expected, desired, &success);
+            set_cas_flags(vm, success);
             cpu->regs[rd] = (int32_t)old;
-            atomic_thread_fence(memory_order_seq_cst);
-            vm_shared_unlock(vm);
             break;
         }
         case OP_XADD: {
             const vm_addr_t addr = cpu->regs[rs1] + imm;
             ensure_atomic_aligned_or_panic(vm, addr, "XADD");
             const uint32_t addend = (uint32_t)cpu->regs[rs2];
-            vm_shared_lock(vm);
-            atomic_thread_fence(memory_order_seq_cst);
-            const uint32_t old = vm_read32(vm, addr);
+            const uint32_t old = vm_atomic_fetch_add32_seqcst(vm, addr, addend);
             const uint32_t newv = old + addend;
-            vm_write32(vm, addr, newv);
             cpu->regs[rd] = (int32_t)old;
             update_add_flags(vm, (int32_t)old, (int32_t)addend, (int32_t)newv);
-            atomic_thread_fence(memory_order_seq_cst);
-            vm_shared_unlock(vm);
             break;
         }
         case OP_XCHG: {
             const vm_addr_t addr = cpu->regs[rs1] + imm;
             ensure_atomic_aligned_or_panic(vm, addr, "XCHG");
             const uint32_t newv = (uint32_t)cpu->regs[rs2];
-            vm_shared_lock(vm);
-            atomic_thread_fence(memory_order_seq_cst);
-            const uint32_t old = vm_read32(vm, addr);
-            vm_write32(vm, addr, newv);
+            const uint32_t old = vm_atomic_exchange32_seqcst(vm, addr, newv);
             cpu->regs[rd] = (int32_t)old;
             update_logic_flags(vm, cpu->regs[rd]);
-            atomic_thread_fence(memory_order_seq_cst);
-            vm_shared_unlock(vm);
             break;
         }
         case OP_LDAR: {
             const vm_addr_t addr = cpu->regs[rs1] + imm;
             ensure_atomic_aligned_or_panic(vm, addr, "LDAR");
-            vm_shared_lock(vm);
-            const uint32_t v = vm_read32(vm, addr);
-            atomic_thread_fence(memory_order_acquire);
-            vm_shared_unlock(vm);
+            const uint32_t v = vm_atomic_load32_acquire(vm, addr);
             cpu->regs[rd] = (int32_t)v;
             update_logic_flags(vm, cpu->regs[rd]);
             break;
@@ -599,10 +578,7 @@ void vm_instruction_case(VM *vm) {
             const vm_addr_t addr = cpu->regs[rs1] + imm;
             ensure_atomic_aligned_or_panic(vm, addr, "STLR");
             const uint32_t v = (uint32_t)cpu->regs[rd];
-            vm_shared_lock(vm);
-            atomic_thread_fence(memory_order_release);
-            vm_write32(vm, addr, v);
-            vm_shared_unlock(vm);
+            vm_atomic_store32_release(vm, addr, v);
             break;
         }
         case OP_FENCE: {
@@ -855,7 +831,7 @@ VM *vm_create(size_t memory_size,
     pthread_mutexattr_destroy(&shared_attr);
 
     vm->memory_size = memory_size;
-    vm->memory = aligned_alloc(4, memory_size);
+    vm->memory = malloc(memory_size);
     if (!vm->memory) {
         free(vm->interrupt_flags);
         free(vm->core_released);
@@ -1093,7 +1069,8 @@ static int run_selftest_ipi(void) {
     init_ivt(vm);
     register_isr(vm, 5, isr_entry);
     int ok = vm_run_headless(vm, 2500);
-    ok = ok && (vm_read32(vm, ipi_addr) == 1);
+    uint32_t ipi = vm_read32(vm, ipi_addr);
+    ok = ok && (ipi == 1);
     vm_destroy(vm);
     return ok;
 }

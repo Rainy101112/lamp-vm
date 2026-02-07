@@ -13,6 +13,22 @@ static inline int in_ram(VM *vm, vm_addr_t addr, size_t size) {
     return addr + size <= vm->memory_size;
 }
 
+static inline _Atomic uint32_t *atomic32_ptr_or_panic(VM *vm, vm_addr_t addr, const char *op_name) {
+    if ((addr % _Alignof(_Atomic uint32_t)) != 0) {
+        panic(panic_format("%s unaligned address: 0x%08x", op_name, addr), vm);
+        return NULL;
+    }
+    if (!in_ram(vm, addr, sizeof(uint32_t))) {
+        panic(panic_format("%s out of bounds: 0x%08x", op_name, addr), vm);
+        return NULL;
+    }
+    if (find_mmio(vm, addr) != NULL) {
+        panic(panic_format("%s does not support MMIO addr: 0x%08x", op_name, addr), vm);
+        return NULL;
+    }
+    return (_Atomic uint32_t *)(void *)(&vm->memory[addr]);
+}
+
 static inline int fb_byte_index(VM *vm, vm_addr_t addr, size_t *out_index) {
     const size_t fb_base = FB_BASE(vm->memory_size);
     if (addr >= fb_base && addr < fb_base + FB_SIZE) {
@@ -86,6 +102,62 @@ uint64_t vm_read64(VM *vm, vm_addr_t addr) {
     uint64_t lo = vm_read32(vm, addr);
     uint64_t hi = vm_read32(vm, addr + 4);
     return lo | (hi << 32);
+}
+
+uint32_t vm_atomic_load32_acquire(VM *vm, vm_addr_t addr) {
+    _Atomic uint32_t *ptr = atomic32_ptr_or_panic(vm, addr, "LDAR");
+    if (!ptr) {
+        return 0;
+    }
+    return atomic_load_explicit(ptr, memory_order_acquire);
+}
+
+void vm_atomic_store32_release(VM *vm, vm_addr_t addr, uint32_t value) {
+    _Atomic uint32_t *ptr = atomic32_ptr_or_panic(vm, addr, "STLR");
+    if (!ptr) {
+        return;
+    }
+    atomic_store_explicit(ptr, value, memory_order_release);
+}
+
+uint32_t vm_atomic_exchange32_seqcst(VM *vm, vm_addr_t addr, uint32_t value) {
+    _Atomic uint32_t *ptr = atomic32_ptr_or_panic(vm, addr, "XCHG");
+    if (!ptr) {
+        return 0;
+    }
+    return atomic_exchange_explicit(ptr, value, memory_order_seq_cst);
+}
+
+uint32_t vm_atomic_fetch_add32_seqcst(VM *vm, vm_addr_t addr, uint32_t value) {
+    _Atomic uint32_t *ptr = atomic32_ptr_or_panic(vm, addr, "XADD");
+    if (!ptr) {
+        return 0;
+    }
+    return atomic_fetch_add_explicit(ptr, value, memory_order_seq_cst);
+}
+
+uint32_t vm_atomic_compare_exchange32_seqcst(VM *vm,
+                                             vm_addr_t addr,
+                                             uint32_t expected,
+                                             uint32_t desired,
+                                             int *success) {
+    _Atomic uint32_t *ptr = atomic32_ptr_or_panic(vm, addr, "CAS");
+    if (!ptr) {
+        if (success) {
+            *success = 0;
+        }
+        return 0;
+    }
+    uint32_t observed = expected;
+    int ok = atomic_compare_exchange_strong_explicit(ptr,
+                                                     &observed,
+                                                     desired,
+                                                     memory_order_seq_cst,
+                                                     memory_order_seq_cst);
+    if (success) {
+        *success = ok ? 1 : 0;
+    }
+    return observed;
 }
 
 void vm_write8(VM *vm, vm_addr_t addr, uint8_t value) {
