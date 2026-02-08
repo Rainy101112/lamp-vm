@@ -1,0 +1,16 @@
+#ifndef LAMP_KERNEL_PLATFORM_H
+#define LAMP_KERNEL_PLATFORM_H
+
+#include "kernel/types.h"
+
+#define KERNEL_MEM_SIZE 0x00400000u
+#define KERNEL_IVT_SIZE 256u
+
+#define IRQ_KEYBOARD 0x00u
+#define IRQ_DIVIDE_BY_ZERO 0x01u
+#define IRQ_DISK_COMPLETE 0x02u
+#define IRQ_SERIAL 0x03u
+
+#define TIMER_MMIO_BASE 0x00002000u
+
+#endif
