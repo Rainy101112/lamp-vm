@@ -166,6 +166,11 @@ void vm_instruction_case(VM *vm) {
             cpu->ip = imm;
             break;
         }
+        case OP_CALLR: {
+            call_push(vm, cpu->ip);
+            cpu->ip = (uint32_t) cpu->regs[rd];
+            break;
+        }
         case OP_RET: {
             cpu->ip = call_pop(vm);
             break;

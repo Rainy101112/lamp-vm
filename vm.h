@@ -238,6 +238,7 @@ enum {
     OP_STARTAP = 0x46,
     OP_IPI = 0x47,
     OP_CPUID = 0x48,
+    OP_CALLR = 0x49,
 };
 
 void vm_dump(const VM *vm, int mem_preview);

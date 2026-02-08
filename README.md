@@ -145,6 +145,7 @@ Runtime debug env vars:
 
 See:
 - `docs/isa.md`
+- `docs/bios.md`
 
 ## Kernel Developing
 
