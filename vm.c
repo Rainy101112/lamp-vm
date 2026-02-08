@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#define __USE_MISC
 #include <unistd.h>
 #include <errno.h>
 #include <sched.h>
@@ -23,6 +24,7 @@
 #include "float.h"
 #include "flags.h"
 #include "debug.h"
+
 const size_t MEM_SIZE = 1048576 * 4; // 4MB
 
 typedef struct {
