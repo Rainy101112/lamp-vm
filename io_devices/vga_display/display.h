@@ -19,8 +19,9 @@ typedef struct {
     SDL_Renderer *renderer;
     SDL_Texture *texture;
 } display;
-int vga_display_init();
+int vga_display_init(void);
 void display_poll_events(VM *vm);
 void display_update(VM *vm);
-void display_shutdown();
+void display_shutdown(void);
+
 #endif // VM_DISPLAY_H

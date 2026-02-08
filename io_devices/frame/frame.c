@@ -18,7 +18,7 @@ uint16_t vga_memory[SCREEN_HEIGHT * SCREEN_WIDTH];
 
 void set_dirty(int value) { dirty.dirty = value; }
 
-void init_screen() {
+void init_screen(void) {
     for (int y = 0; y < SCREEN_HEIGHT; y++) {
         for (int x = 0; x < SCREEN_WIDTH; x++) {
             screen[y][x].ch = ' ';
@@ -34,7 +34,7 @@ void init_screen() {
     dirty.y2 = SCREEN_HEIGHT - 1;
 }
 
-void scroll_up() {
+void scroll_up(void) {
     memmove(&screen[0][0], &screen[1][0], sizeof(Cell) * (SCREEN_HEIGHT - 1) * SCREEN_WIDTH);
     for (int x = 0; x < SCREEN_WIDTH; x++) {
         screen[SCREEN_HEIGHT - 1][x].ch = ' ';
@@ -91,7 +91,7 @@ void put_char_with_attr(char c, char attr) {
     }
 }
 
-void flush_to_vga() {
+void flush_to_vga(void) {
     if (!dirty.dirty)
         return;
     for (int y = dirty.y1; y <= dirty.y2; y++) {
@@ -102,8 +102,8 @@ void flush_to_vga() {
     }
     dirty.dirty = 0;
 }
-void clear_screen() { system("clear"); }
-void render_vga_screen() {
+void clear_screen(void) { system("clear"); }
+void render_vga_screen(void) {
     flush_to_vga();
 
     for (int y = 0; y < SCREEN_HEIGHT; y++) {
@@ -115,7 +115,7 @@ void render_vga_screen() {
     fflush(stdout);
     refresh_counter = 0;
 }
-void render_screen_dirty() {
+void render_screen_dirty(void) {
     if (!dirty.dirty)
         return;
     for (int y = dirty.y1; y <= dirty.y2; y++) {
@@ -126,7 +126,7 @@ void render_screen_dirty() {
     }
     dirty.dirty = 0;
 }
-void flush_screen_final() {
+void flush_screen_final(void) {
     dirty.dirty = 1;
     dirty.x1 = 0;
     dirty.y1 = 0;

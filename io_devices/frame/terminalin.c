@@ -12,7 +12,7 @@
 #include "frame.h"
 struct termios orig_termios;
 
-void enable_raw_mode() {
+void enable_raw_mode(void) {
     tcgetattr(STDIN_FILENO, &orig_termios);
     struct termios raw = orig_termios;
     raw.c_lflag &= ~(ECHO | ICANON);
@@ -21,9 +21,9 @@ void enable_raw_mode() {
     fcntl(STDIN_FILENO, F_SETFL, O_NONBLOCK);
 }
 
-void disable_raw_mode() { tcsetattr(STDIN_FILENO, TCSANOW, &orig_termios); }
+void disable_raw_mode(void) { tcsetattr(STDIN_FILENO, TCSANOW, &orig_termios); }
 
-int get_key_nonblocking() {
+int get_key_nonblocking(void) {
     char c;
     int n = read(STDIN_FILENO, &c, 1);
     if (n == 1)

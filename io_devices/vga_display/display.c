@@ -82,7 +82,7 @@ void display_poll_events(VM *vm) {
     }
 }
 
-void display_shutdown() {
+void display_shutdown(void) {
     SDL_StopTextInput();
     SDL_DestroyTexture(texture);
     SDL_DestroyRenderer(renderer);
