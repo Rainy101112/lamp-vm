@@ -3,3 +3,4 @@ build/
 build-release/
 *.o
 *.ll
+.DS_Store
