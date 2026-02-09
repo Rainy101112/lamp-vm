@@ -151,7 +151,7 @@ void disk_write(const VM *vm) {
 
     uint8_t buf[DISK_SECTOR_SIZE * vm->disk.count];
     for (size_t i = 0; i < vm->disk.count * DISK_SECTOR_SIZE; i++) {
-        buf[i] = vm_read8(vm, addr + i);
+        buf[i] = vm_read8((VM *)vm, addr + i);
     }
 
     fwrite(buf, 1, vm->disk.count * DISK_SECTOR_SIZE, vm->disk.fp);

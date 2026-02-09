@@ -32,10 +32,13 @@ uint32_t time_read32(VM *vm, uint32_t addr) {
     }
 }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
 void time_write32(VM *vm, uint32_t addr, uint32_t value) {
     fprintf(stderr, "Attempted to write to read-only TIME MMIO at 0x%08x\n", addr);
     vm->halted = 1;
 }
+#pragma GCC diagnostic pop
 
 void register_time_mmio(VM *vm) {
     static MMIO_Device time_dev;

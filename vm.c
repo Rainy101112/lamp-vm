@@ -792,7 +792,7 @@ void vm_dump(const VM *vm, int mem_preview) {
         printf("<empty>\n");
     }
     printf("Memory (first %d cells):\n", mem_preview);
-    for (int i = 0; i < mem_preview && i < MEM_SIZE; i++) {
+    for (int i = 0; i < mem_preview && i < (ssize_t)MEM_SIZE; i++) {
         printf("[%d] = %d\n", i, vm->memory[i]);
     }
     printf("IP = %lu\n", cpu->ip);

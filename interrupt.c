@@ -8,9 +8,12 @@
 
 #define ISR_ARG_REG 31
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
 static inline size_t irq_index(const VM *vm, int core_id, uint32_t int_no) {
     return (size_t)core_id * (size_t)IVT_SIZE + (size_t)int_no;
 }
+#pragma GCC diagnostic pop
 
 static inline void isr_push_u32(VM *vm, uint32_t v) {
     isr_push(vm, (uint64_t)v);
