@@ -1,5 +1,7 @@
 # Kernel Scaffold
 
+> This project may split into a separate repository in the future.
+
 This directory provides a minimal kernel-side scaffold aligned with `docs/bios.md`.
 
 ## Goal
@@ -44,3 +46,62 @@ BIOS behavior is fixed by `docs/bios.md`:
 - Kernel must reinitialize IVT/trap policy on entry.
 - Kernel must not assume register state beyond control transfer.
 - Kernel headers avoid libc integer headers and use `kernel/types.h`.
+
+## Build To Load Pipeline
+
+This is the practical end-to-end flow used by current BIOS:
+
+1. build `kernel.elf`
+2. write `kernel.elf` into `disk.img` at `LBA 1`
+3. build BIOS `boot.bin`
+4. run VM with BIOS as `--bin`
+
+### 1) Build kernel ELF
+
+Current recommended flags for backend bring-up:
+
+- `-O0` (some files may still hit ISel issues at higher optimization)
+- `-ffreestanding -fno-builtin -fno-stack-protector`
+
+```bash
+export LAMP_CLANG=/Users/glowingstone/CLionProjects/llvm-project/build-all/bin/clang
+export LAMP_LD=/Users/glowingstone/CLionProjects/llvm-project/build-all/bin/ld.lld
+
+cd /Users/glowingstone/CLionProjects/vm
+mkdir -p build-kernel
+
+for f in kernel/src/*.c; do
+  $LAMP_CLANG --target=lamp-unknown-unknown \
+    -ffreestanding -fno-builtin -fno-stack-protector -O0 \
+    -Ikernel/include -c "$f" -o "build-kernel/$(basename "$f" .c).o"
+done
+
+$LAMP_LD -T kernel/linker.ld -e kernel_entry build-kernel/*.o -o build-kernel/kernel.elf
+```
+
+### 2) Write kernel ELF to `disk.img` at LBA 1
+
+BIOS reads kernel from `LBA 1` (offset `512` bytes).
+
+```bash
+cd /Users/glowingstone/CLionProjects/vm
+
+test -f disk.img || truncate -s 16M disk.img
+dd if=build-kernel/kernel.elf of=disk.img bs=512 seek=1 conv=notrunc
+```
+
+### 3) Build BIOS boot image
+
+```bash
+cd /Users/glowingstone/CLionProjects/vm/bios
+
+$LAMP_CLANG --target=lamp-unknown-unknown -c bios.c -o bios.o
+$LAMP_LD -T boot_flat.ld bios.o -o boot.bin
+```
+
+### 4) Boot VM
+
+```bash
+cd /Users/glowingstone/CLionProjects/vm
+./build/vm --bin bios/boot.bin --smp 1
+```
