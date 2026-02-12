@@ -65,7 +65,6 @@ Current recommended flags for backend bring-up:
 
 - This project needs a custom LLVM toolchain to compile.
 ```bash
-cd /Users/glowingstone/CLionProjects/vm
 mkdir -p build-kernel
 
 for f in kernel/src/*.c; do
