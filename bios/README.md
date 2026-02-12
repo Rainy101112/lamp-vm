@@ -19,8 +19,6 @@ This format is:
 ### Build commands
 
 ```bash
-cd /Users/glowingstone/CLionProjects/vm/bios
-
 $LAMP_CLANG --target=lamp-unknown-unknown -c bios.c -o bios.o
 
 # One ld command directly emits boot.bin in legacy flat format.
@@ -30,7 +28,6 @@ $LAMP_LD -T boot_flat.ld bios.o -o boot.bin
 ### Run with VM
 
 ```bash
-cd /Users/glowingstone/CLionProjects/vm
 ./build/vm --bin bios/boot.bin --smp 1
 ```
 
@@ -39,8 +36,6 @@ cd /Users/glowingstone/CLionProjects/vm
 Useful for inspection/debugging of symbols/sections.
 
 ```bash
-cd /Users/glowingstone/CLionProjects/vm/bios
-
 $LAMP_CLANG --target=lamp-unknown-unknown -c bios.c -o bios.o
 $LAMP_LD bios.o -e _start -o bios.elf
 ```
