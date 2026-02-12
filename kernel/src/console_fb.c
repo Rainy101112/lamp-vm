@@ -107,11 +107,6 @@ void console_fb_init(void) {
     g_cursor_x = 0;
     g_cursor_y = 0;
     console_fb_clear();
-    /* Raw pixel sanity marker (2x2 blocks) for framebuffer path diagnostics. */
-    g_fb[0] = 0x00FF0000u;
-    g_fb[1] = 0x0000FF00u;
-    g_fb[(int)FB_WIDTH] = 0x000000FFu;
-    g_fb[(int)FB_WIDTH + 1] = 0x00FFFFFFu;
 }
 
 void console_fb_set_colors(uint32_t fg, uint32_t bg) {

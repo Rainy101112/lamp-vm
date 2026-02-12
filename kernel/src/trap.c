@@ -8,6 +8,12 @@ static trap_handler_t g_trap_table[KERNEL_IVT_SIZE];
 static volatile uint32_t g_trap_ready;
 static volatile uint32_t g_irq_mask[KERNEL_IVT_SIZE / 32u];
 
+static inline void ivt_write_entry(uint32_t irq_no, uintptr_t handler_addr) {
+    const uint32_t slot = KERNEL_IVT_BASE + irq_no * KERNEL_IVT_ENTRY_SIZE;
+    *(volatile uint32_t *)(uintptr_t)(slot + 0u) = (uint32_t)handler_addr;
+    *(volatile uint32_t *)(uintptr_t)(slot + 4u) = 0u;
+}
+
 void trap_register(uint32_t irq_no, trap_handler_t handler) {
     if (irq_no >= KERNEL_IVT_SIZE) {
         return;
@@ -18,6 +24,7 @@ void trap_register(uint32_t irq_no, trap_handler_t handler) {
 void trap_init(void) {
     for (uint32_t i = 0; i < KERNEL_IVT_SIZE; i++) {
         g_trap_table[i] = irq_default;
+        ivt_write_entry(i, (uintptr_t)irq_stub_entry);
     }
     for (uint32_t i = 0; i < (KERNEL_IVT_SIZE / 32u); i++) {
         g_irq_mask[i] = 0u;

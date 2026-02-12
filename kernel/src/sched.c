@@ -1,3 +1,4 @@
+#include "../include/kernel/irq.h"
 #include "../include/kernel/sched.h"
 
 static volatile unsigned int g_ticks;
@@ -30,6 +31,7 @@ unsigned int sched_ticks(void) {
 
 void sched_run(void) {
     for (;;) {
+        irq_poll_input_echo();
         if (g_need_resched) {
             g_need_resched = 0;
             /*
