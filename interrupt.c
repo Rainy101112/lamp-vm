@@ -46,7 +46,7 @@ void vm_enter_interrupt(VM *vm, uint32_t int_no) {
         isr_push_u32(vm, cpu->regs[i]);
     }
 
-    cpu->ip = (size_t)isr_ip;
+    cpu->ip = (size_t)(vm_addr_t)isr_ip;
     cpu->in_interrupt = 1;
 }
 
@@ -63,7 +63,7 @@ void vm_iret(VM *vm) {
 
     cpu->flags = (unsigned int)isr_pop(vm);
 
-    cpu->ip = (size_t)isr_pop(vm);
+    cpu->ip = (size_t)(vm_addr_t)isr_pop(vm);
 
     cpu->in_interrupt = 0;
 }
@@ -107,7 +107,7 @@ void register_isr(VM *vm, uint32_t int_no, uint64_t isr_ip) {
         panic(panic_format("Invalid interrupt number %u\n", int_no), vm);
         return;
     }
-    vm_write64(vm, IVT_BASE + int_no * 8, isr_ip);
+    vm_write64(vm, IVT_BASE + int_no * 8, (uint64_t)(vm_addr_t)isr_ip);
 }
 
 void trigger_interrupt(VM *vm, uint32_t int_no) {

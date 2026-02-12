@@ -11,13 +11,14 @@
             panic("No active CPU context\n", (vm));                                                \
             return;                                                                                \
         }                                                                                          \
-        if (cpu->ip + 8 > (vm)->memory_size) {                                                     \
+        const vm_addr_t ip = (vm_addr_t)cpu->ip;                                                   \
+        if ((size_t)ip + 8u > (vm)->memory_size) {                                                 \
             panic("IP out of bounds\n", vm);                                                       \
             return;                                                                                \
         }                                                                                          \
-        cpu->last_ip = cpu->ip;                                                                    \
-        uint64_t inst = vm_read64((vm), (vm_addr_t)cpu->ip);                                       \
-        cpu->ip += 8;                                                                              \
+        cpu->last_ip = ip;                                                                         \
+        uint64_t inst = vm_read64((vm), ip);                                                       \
+        cpu->ip = (size_t)(ip + 8u);                                                               \
         op = (inst >> 56) & 0xFF;                                                                  \
         rd = (inst >> 48) & 0xFF;                                                                  \
         rs1 = (inst >> 40) & 0xFF;                                                                 \

@@ -151,7 +151,7 @@ void vm_instruction_case(VM *vm) {
             return;
         }
         case OP_JMP: {
-            cpu->ip = imm;
+            cpu->ip = (size_t)(vm_addr_t)imm;
             break;
         }
         case OP_PUSH: {
@@ -164,17 +164,17 @@ void vm_instruction_case(VM *vm) {
             break;
         }
         case OP_CALL: {
-            call_push(vm, cpu->ip);
-            cpu->ip = imm;
+            call_push(vm, (uint64_t)(vm_addr_t)cpu->ip);
+            cpu->ip = (size_t)(vm_addr_t)imm;
             break;
         }
         case OP_CALLR: {
-            call_push(vm, cpu->ip);
-            cpu->ip = (uint32_t) cpu->regs[rd];
+            call_push(vm, (uint64_t)(vm_addr_t)cpu->ip);
+            cpu->ip = (size_t)(vm_addr_t)cpu->regs[rd];
             break;
         }
         case OP_RET: {
-            cpu->ip = call_pop(vm);
+            cpu->ip = (size_t)(vm_addr_t)call_pop(vm);
             break;
         }
         case OP_LOAD: {
@@ -360,49 +360,49 @@ void vm_instruction_case(VM *vm) {
 
         case OP_JZ: {
             if (cpu->flags & FLAG_ZF) {
-                cpu->ip = imm;
+                cpu->ip = (size_t)(vm_addr_t)imm;
             }
             break;
         }
         case OP_JNZ: {
             if (!(cpu->flags & FLAG_ZF)) {
-                cpu->ip = imm;
+                cpu->ip = (size_t)(vm_addr_t)imm;
             }
             break;
         }
         case OP_JG: {
             if (!(cpu->flags & FLAG_ZF) && ((cpu->flags & FLAG_SF) == (cpu->flags & FLAG_OF))) {
-                cpu->ip = imm;
+                cpu->ip = (size_t)(vm_addr_t)imm;
             }
             break;
         }
         case OP_JGE: {
             if ((cpu->flags & FLAG_SF) == (cpu->flags & FLAG_OF)) {
-                cpu->ip = imm;
+                cpu->ip = (size_t)(vm_addr_t)imm;
             }
             break;
         }
         case OP_JL: {
             if ((cpu->flags & FLAG_SF) != (cpu->flags & FLAG_OF)) {
-                cpu->ip = imm;
+                cpu->ip = (size_t)(vm_addr_t)imm;
             }
             break;
         }
         case OP_JLE: {
             if ((cpu->flags & FLAG_ZF) || (cpu->flags & FLAG_SF) != (cpu->flags & FLAG_OF)) {
-                cpu->ip = imm;
+                cpu->ip = (size_t)(vm_addr_t)imm;
             }
             break;
         }
         case OP_JC: {
             if (cpu->flags & FLAG_CF) {
-                cpu->ip = imm;
+                cpu->ip = (size_t)(vm_addr_t)imm;
             }
             break;
         }
         case OP_JNC: {
             if (!(cpu->flags & FLAG_CF)) {
-                cpu->ip = imm;
+                cpu->ip = (size_t)(vm_addr_t)imm;
             }
             break;
         }
