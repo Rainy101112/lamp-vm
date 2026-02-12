@@ -37,6 +37,7 @@ typedef struct VM_Debug VM_Debug;
 #define DUMP_MEM_SEEK_LEN 16
 
 #define IVT_SIZE 256
+#define IRQ_BITMAP_WORDS (IVT_SIZE / 64)
 #define IVT_ENTRY_SIZE 8
 #define CALL_STACK_SIZE 256
 #define DATA_STACK_SIZE 256
@@ -84,6 +85,8 @@ typedef struct {
 } MMIO_Device;
 struct VCPU {
     uint32_t regs[REG_COUNT];
+
+    atomic_uint_fast64_t execution_times;
     size_t ip;
     size_t last_ip;
     unsigned int flags;
@@ -91,7 +94,6 @@ struct VCPU {
     int csp;
     int isp;
     int in_interrupt;
-    uint64_t execution_times;
     int core_id;
     vm_addr_t call_stack_base;
     vm_addr_t data_stack_base;
@@ -114,12 +116,13 @@ struct VM{
      * [fb_base, fb_base + FB_SIZE)
      */
     uint32_t *fb;
+    uint32_t *fb_front;
+    pthread_mutex_t fb_row_locks[FB_HEIGHT];
 
     int io[IO_SIZE];
 
     Disk disk;
-
-    atomic_int *interrupt_flags;
+    atomic_uint_fast64_t *interrupt_bitmap;
 
     uint64_t start_realtime_ns;
     uint64_t start_monotonic_ns;
@@ -131,6 +134,9 @@ struct VM{
 
     MMIO_Device *mmio_devices[MAX_MMIO_DEVICES];
     int mmio_count;
+    MMIO_Device *mmio_cache_dev;
+    uint32_t mmio_cache_start;
+    uint32_t mmio_cache_end;
 
     /*
      * SMP runtime configuration and state.
@@ -138,7 +144,6 @@ struct VM{
     int smp_cores;
     VCPU *cpus;
     atomic_bool *core_released;
-    atomic_uint_fast64_t total_execution_times;
     pthread_mutex_t shared_lock;
     vm_addr_t stack_pool_base;
     size_t stack_pool_size;
@@ -165,6 +170,27 @@ static inline void vm_shared_unlock(VM *vm) {
     if (vm)
         pthread_mutex_unlock(&vm->shared_lock);
 }
+
+static inline size_t vm_fb_row_from_byte_index(size_t fb_byte_index) {
+    return fb_byte_index / (size_t)(FB_WIDTH * FB_BPP);
+}
+
+static inline size_t vm_fb_row_from_pixel_index(size_t fb_pixel_index) {
+    return fb_pixel_index / (size_t)FB_WIDTH;
+}
+
+static inline void vm_fb_row_lock(VM *vm, size_t row) {
+    if (vm && row < FB_HEIGHT) {
+        pthread_mutex_lock(&vm->fb_row_locks[row]);
+    }
+}
+
+static inline void vm_fb_row_unlock(VM *vm, size_t row) {
+    if (vm && row < FB_HEIGHT) {
+        pthread_mutex_unlock(&vm->fb_row_locks[row]);
+    }
+}
+
 enum {
     OP_ADD = 0x01,
     OP_SUB = 0x02,

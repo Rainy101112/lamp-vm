@@ -1,4 +1,5 @@
 #include <SDL2/SDL.h>
+#include <string.h>
 #include "display.h"
 #include "../../io.h"
 #include "../../interrupt.h"
@@ -44,8 +45,16 @@ void display_update(VM *vm) {
     //}
     //printf("\n");
 
-    //printf("flushing texture, first pixel = %08x\n", ((uint32_t *)vm->fb)[0]);
-    SDL_UpdateTexture(texture, NULL, vm->fb, FB_WIDTH * FB_BPP);
+    const size_t row_bytes = (size_t)FB_WIDTH * (size_t)FB_BPP;
+    uint8_t *front = (uint8_t *)vm->fb_front;
+    const uint8_t *back = (const uint8_t *)vm->fb;
+    for (size_t row = 0; row < FB_HEIGHT; row++) {
+        vm_fb_row_lock(vm, row);
+        memcpy(front + row * row_bytes, back + row * row_bytes, row_bytes);
+        vm_fb_row_unlock(vm, row);
+    }
+
+    SDL_UpdateTexture(texture, NULL, vm->fb_front, FB_WIDTH * FB_BPP);
     SDL_RenderClear(renderer);
     SDL_RenderCopy(renderer, texture, NULL, NULL);
     SDL_RenderPresent(renderer);

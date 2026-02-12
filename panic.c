@@ -15,9 +15,17 @@ const char *panic_format(const char *fmt, ...) {
     return buffer;
 }
 
+static uint64_t calculate_cycles(const VM *vm) {
+    uint64_t cycles = 0;
+    for (int i = 0; i < vm->smp_cores; i++) {
+        cycles += atomic_load_explicit(&vm->cpus[i].execution_times, memory_order_relaxed);
+    }
+    return cycles;
+}
+
 void panic(const char *msg, VM *vm) {
     VCPU *cpu = vm_current_cpu(vm);
-    uint64_t cycles = vm ? atomic_load(&vm->total_execution_times) : 0;
+    uint64_t cycles = vm ? calculate_cycles(vm) : 0;
     size_t ip_now = cpu ? cpu->ip : 0;
     size_t last_ip = cpu ? cpu->last_ip : 0;
     printf("VM panic detected. %s\n @ %lu clock cycle, IP = %lu",

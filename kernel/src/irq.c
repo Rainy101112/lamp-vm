@@ -52,14 +52,12 @@ static int rx_pop(uint8_t *out) {
 }
 
 static void serial_drain_rx(void) {
-    for (;;) {
-        uint32_t status = io_in32(IO_SERIAL_STATUS);
-        if ((status & SERIAL_STATUS_RX_READY) == 0u) {
-            break;
-        }
-        uint32_t v = io_in32(IO_SERIAL_RX);
-        rx_push((uint8_t)(v & 0xFFu));
+    uint32_t status = io_in32(IO_SERIAL_STATUS);
+    if ((status & SERIAL_STATUS_RX_READY) == 0u) {
+        return;
     }
+    uint32_t v = io_in32(IO_SERIAL_RX);
+    rx_push((uint8_t)(v & 0xFFu));
 }
 
 void irq_common_entry(uint32_t irq_no) {
@@ -83,10 +81,14 @@ void irq_input_init(void) {
 void irq_poll_input_echo(void) {
     uint8_t c = 0u;
     while (rx_pop(&c)) {
-        if (c == (uint8_t)'\r') {
+        if (c == (uint8_t)'\r' || c == (uint8_t)'\n') {
             console_fb_putc((uint32_t)'\n');
-        } else {
+        } else if (c == (uint8_t)'\t') {
+            console_fb_putc((uint32_t)'\t');
+        } else if (c >= (uint8_t)' ' && c <= (uint8_t)'~') {
             console_fb_putc((uint32_t)c);
+        } else {
+            // Ignore non-printable control bytes to avoid spurious cursor advance/scroll.
         }
     }
 }

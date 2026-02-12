@@ -26,6 +26,7 @@
 #include "debug.h"
 
 const size_t MEM_SIZE = 1048576 * 4; // 4MB
+enum { EXECUTION_TIMES_FLUSH_INTERVAL = 1024 };
 
 typedef struct {
     VM *vm;
@@ -124,8 +125,6 @@ void vm_instruction_case(VM *vm) {
     int32_t imm;
     FETCH64(vm, op, rd, rs1, rs2, imm);
     vm_debug_count_instruction(vm, op);
-    cpu->execution_times++;
-    atomic_fetch_add(&vm->total_execution_times, 1);
     //printf("IP=%lu, executing opcode=%d\n", cpu->ip, op);
     //printf("0x%08x,0x%08x,0x%08x,0x%08x\n", rd,rs1,rs2,imm);
     switch (op) {
@@ -279,6 +278,17 @@ void vm_instruction_case(VM *vm) {
                     cpu->regs[rd] = v;
                     vm->io[KEYBOARD] = 0;
                     vm->io[SCREEN_ATTRIBUTE] &= ~SERIAL_STATUS_RX_READY;
+                    /*
+                     * RX read acts as IRQ acknowledge: clear serial/keyboard bits on core 0.
+                     * This prevents stale pending bits from retriggering the same input forever.
+                     */
+                    {
+                        const size_t word_idx = ((size_t)INT_SERIAL >> 6);
+                        const uint_fast64_t serial_mask = (uint_fast64_t)(1ULL << (INT_SERIAL & 63u));
+                        const uint_fast64_t keyboard_mask = (uint_fast64_t)(1ULL << (INT_KEYBOARD & 63u));
+                        const uint_fast64_t clear_mask = ~(serial_mask | keyboard_mask);
+                        atomic_fetch_and(&vm->interrupt_bitmap[word_idx], clear_mask);
+                    }
                 } else if (addr == SCREEN_ATTRIBUTE) {
                     cpu->regs[rd] = vm->io[SCREEN_ATTRIBUTE] & 0xFF;
                 } else {
@@ -661,16 +671,25 @@ void vm_instruction_case(VM *vm) {
     }
 }
 
+static inline void vm_flush_execution_times(VCPU *cpu, uint64_t *local_cycles) {
+    if (*local_cycles == 0) {
+        return;
+    }
+    atomic_fetch_add_explicit(&cpu->execution_times, *local_cycles, memory_order_relaxed);
+    *local_cycles = 0;
+}
+
 void *vm_thread(void *arg) {
     CpuThreadArg *thread_arg = (CpuThreadArg *)arg;
     VM *vm = thread_arg->vm;
     int core_id = thread_arg->core_id;
     free(thread_arg);
     vm_tls_vcpu = &vm->cpus[core_id];
+    uint64_t local_cycles = 0;
 
     while (1) {
         if (vm->halted || vm->panic) {
-            return NULL;
+            break;
         }
         if (core_id != 0 && !atomic_load_explicit(&vm->core_released[core_id], memory_order_acquire)) {
             sched_yield();
@@ -681,10 +700,16 @@ void *vm_thread(void *arg) {
         }
         vm_handle_interrupts(vm);
         vm_instruction_case(vm);
+        local_cycles++;
+        if (local_cycles >= EXECUTION_TIMES_FLUSH_INTERVAL) {
+            vm_flush_execution_times(vm_tls_vcpu, &local_cycles);
+        }
         if (core_id == 0) {
             disk_tick(vm);
         }
     }
+    vm_flush_execution_times(vm_tls_vcpu, &local_cycles);
+    return NULL;
 }
 
 void display_loop(VM *vm) {
@@ -850,14 +875,15 @@ VM *vm_create(size_t memory_size,
         free(vm);
         return NULL;
     }
-    vm->interrupt_flags = calloc((size_t)vm->smp_cores * (size_t)IVT_SIZE, sizeof(atomic_int));
-    if (!vm->interrupt_flags) {
+    vm->interrupt_bitmap = calloc((size_t)vm->smp_cores * (size_t)IRQ_BITMAP_WORDS,
+                                  sizeof(atomic_uint_fast64_t));
+    if (!vm->interrupt_bitmap) {
         free(vm->core_released);
         free(vm->cpus);
         free(vm);
         return NULL;
     }
-    atomic_init(&vm->total_execution_times, 0);
+
     pthread_mutexattr_t shared_attr;
     pthread_mutexattr_init(&shared_attr);
     pthread_mutexattr_settype(&shared_attr, PTHREAD_MUTEX_RECURSIVE);
@@ -867,7 +893,7 @@ VM *vm_create(size_t memory_size,
     vm->memory_size = memory_size;
     vm->memory = malloc(memory_size);
     if (!vm->memory) {
-        free(vm->interrupt_flags);
+        free(vm->interrupt_bitmap);
         free(vm->core_released);
         free(vm->cpus);
         free(vm);
@@ -878,6 +904,34 @@ VM *vm_create(size_t memory_size,
     size_t fb_base = FB_BASE(memory_size);
 
     vm->fb = malloc(FB_SIZE);
+    vm->fb_front = malloc(FB_SIZE);
+    if (!vm->fb || !vm->fb_front) {
+        free(vm->fb_front);
+        free(vm->fb);
+        free(vm->memory);
+        free(vm->interrupt_bitmap);
+        free(vm->core_released);
+        free(vm->cpus);
+        free(vm);
+        return NULL;
+    }
+    memset(vm->fb, 0, FB_SIZE);
+    memset(vm->fb_front, 0, FB_SIZE);
+    for (size_t row = 0; row < FB_HEIGHT; row++) {
+        if (pthread_mutex_init(&vm->fb_row_locks[row], NULL) != 0) {
+            for (size_t done = 0; done < row; done++) {
+                pthread_mutex_destroy(&vm->fb_row_locks[done]);
+            }
+            free(vm->fb_front);
+            free(vm->fb);
+            free(vm->memory);
+            free(vm->interrupt_bitmap);
+            free(vm->core_released);
+            free(vm->cpus);
+            free(vm);
+            return NULL;
+        }
+    }
     printf("vm->fb = %p\n", (void *) vm->fb);
     printf("fb_base = 0x%zx\n", fb_base);
     printf("fb address mod 4 = %zu\n", ((size_t) vm->fb) % 4);
@@ -971,6 +1025,7 @@ VM *vm_create(size_t memory_size,
         vm_addr_t core_stack_base = (vm->smp_cores == 1)
             ? CALL_STACK_BASE
             : vm->stack_pool_base + (vm_addr_t)(per_core_stack_bytes * (size_t)i);
+        atomic_init(&vm->cpus[i].execution_times, 0);
         vm->cpus[i].core_id = i;
         vm->cpus[i].is_bsp = (i == 0) ? 1 : 0;
         vm->cpus[i].ip = text_base;
@@ -998,8 +1053,11 @@ void vm_destroy(VM *vm) {
     vm_debug_destroy(vm);
     disk_close(vm);
     pthread_mutex_destroy(&vm->shared_lock);
-    if (vm->interrupt_flags)
-        free(vm->interrupt_flags);
+    for (size_t row = 0; row < FB_HEIGHT; row++) {
+        pthread_mutex_destroy(&vm->fb_row_locks[row]);
+    }
+    if (vm->interrupt_bitmap)
+        free(vm->interrupt_bitmap);
     if (vm->core_released)
         free(vm->core_released);
     if (vm->cpus)
@@ -1008,6 +1066,8 @@ void vm_destroy(VM *vm) {
         free(vm->memory);
     if (vm->fb)
         free(vm->fb);
+    if (vm->fb_front)
+        free(vm->fb_front);
     free(vm);
 }
 
@@ -1158,28 +1218,6 @@ static int run_selftests(void) {
 }
 
 int main(int argc, char **argv) {
-    /*
-
-
-    uint64_t program[] = {
-        INST(OP_MOVI, 0, 0, 0, FB_BASE(MEM_SIZE)),
-        INST(OP_MOVI, 1, 0, 0, 0x474A43),
-        INST(OP_MOVI, 2, 0, 0, 0),
-        INST(OP_MOVI, 7, 0, 0, 4),
-        // LOOP_START (index 4)
-        INST(OP_STORE32, 1, 0, 2, 0),
-        INST(OP_ADD, 2, 2, 7, 0),
-        INST(OP_CMPI, 2, 0, 0, FB_SIZE),
-        INST(OP_JZ, 0, 0, 0, PROGRAM_BASE + 9 * 8),
-        INST(OP_JMP, 0, 0, 0, PROGRAM_BASE + 4 * 8),
-
-        // HALT (index 8)
-        INST(OP_HALT, 0, 0, 0, 0)
-    };
-
-    size_t program_size = sizeof(program) / sizeof(program[0]);
-    */
-
     const char *filename = "boot.bin";
     int smp_cores = 1;
     int selftest = 0;
@@ -1255,8 +1293,13 @@ int main(int argc, char **argv) {
 #endif
 
     flush_screen_final();
+    uint64_t total_execution_times = 0;
+    for (int i = 0; i < vm->smp_cores; i++) {
+        total_execution_times += atomic_load_explicit(&vm->cpus[i].execution_times, memory_order_relaxed);
+    }
+
     printf("Execution complete in %lu cycles.\n",
-           (unsigned long)atomic_load(&vm->total_execution_times));
+           (unsigned long)total_execution_times);
     vm_debug_print_stats(vm);
     vm_destroy(vm);
     free(program);

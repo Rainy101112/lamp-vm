@@ -8,12 +8,13 @@
 
 #define ISR_ARG_REG 31
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-static inline size_t irq_index(const VM *vm, int core_id, uint32_t int_no) {
-    return (size_t)core_id * (size_t)IVT_SIZE + (size_t)int_no;
+static inline size_t irq_word_index(int core_id, uint32_t int_no) {
+    return (size_t)core_id * (size_t)IRQ_BITMAP_WORDS + (size_t)(int_no >> 6);
 }
-#pragma GCC diagnostic pop
+
+static inline uint64_t irq_bit_mask(uint32_t int_no) {
+    return 1ULL << (int_no & 63);
+}
 
 static inline void isr_push_u32(VM *vm, uint32_t v) {
     isr_push(vm, (uint64_t)v);
@@ -76,15 +77,32 @@ void vm_handle_interrupts(VM *vm) {
         return;
 
     const int core_id = cpu->core_id;
-    for (uint32_t i = 0; i < IVT_SIZE; i++) {
-        atomic_int *slot = &vm->interrupt_flags[irq_index(vm, core_id, i)];
-        if (atomic_load(slot) == 0)
+    const size_t base = (size_t)core_id * (size_t)IRQ_BITMAP_WORDS;
+
+    // O(IRQ_BITMAP_WORDS) fast path: only 4 words when IVT_SIZE is 256.
+    for (uint32_t w = 0; w < IRQ_BITMAP_WORDS; w++) {
+        uint_fast64_t word = atomic_load(&vm->interrupt_bitmap[base + w]);
+        if (word == 0)
             continue;
 
-        if (atomic_exchange(slot, 0) == 0)
-            continue;
-        vm_enter_interrupt(vm, i);
-        break;
+        const int bit = __builtin_ctzll((unsigned long long)word);
+        const uint64_t mask = 1ULL << (uint32_t)bit;
+
+        while (1) {
+            uint_fast64_t expected = word;
+            if ((expected & mask) == 0) {
+                break;
+            }
+            const uint_fast64_t desired = expected & (uint_fast64_t)(~mask);
+            if (atomic_compare_exchange_weak(&vm->interrupt_bitmap[base + w], &expected, desired)) {
+                const uint32_t int_no = (uint32_t)(w * 64u + (uint32_t)bit);
+                vm_enter_interrupt(vm, int_no);
+                return;
+            }
+            word = atomic_load(&vm->interrupt_bitmap[base + w]);
+            if (word == 0)
+                break;
+        }
     }
 }
 
@@ -93,8 +111,8 @@ void init_ivt(VM *vm) {
         vm_write64(vm, IVT_BASE + i * 8, UINT64_MAX);
     }
     for (int c = 0; c < vm->smp_cores; c++) {
-        for (uint32_t i = 0; i < IVT_SIZE; i++) {
-            atomic_store(&vm->interrupt_flags[irq_index(vm, c, i)], 0);
+        for (uint32_t w = 0; w < IRQ_BITMAP_WORDS; w++) {
+            atomic_store(&vm->interrupt_bitmap[(size_t)c * (size_t)IRQ_BITMAP_WORDS + w], 0);
         }
     }
     for (int c = 0; c < vm->smp_cores; c++) {
@@ -121,5 +139,8 @@ void trigger_interrupt_target(VM *vm, int core_id, uint32_t int_no) {
         return;
     if (int_no >= IVT_SIZE)
         return;
-    atomic_store(&vm->interrupt_flags[irq_index(vm, core_id, int_no)], 1);
+
+    const size_t idx = irq_word_index(core_id, int_no);
+    const uint64_t mask = irq_bit_mask(int_no);
+    atomic_fetch_or(&vm->interrupt_bitmap[idx], (uint_fast64_t)mask);
 }
