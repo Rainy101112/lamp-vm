@@ -63,10 +63,8 @@ Current recommended flags for backend bring-up:
 - `-O0` (some files may still hit ISel issues at higher optimization)
 - `-ffreestanding -fno-builtin -fno-stack-protector`
 
+- This project needs a custom LLVM toolchain to compile.
 ```bash
-export LAMP_CLANG=/Users/glowingstone/CLionProjects/llvm-project/build-all/bin/clang
-export LAMP_LD=/Users/glowingstone/CLionProjects/llvm-project/build-all/bin/ld.lld
-
 cd /Users/glowingstone/CLionProjects/vm
 mkdir -p build-kernel
 
@@ -84,8 +82,6 @@ $LAMP_LD -T kernel/linker.ld -e kernel_entry build-kernel/*.o -o build-kernel/ke
 BIOS reads kernel from `LBA 1` (offset `512` bytes).
 
 ```bash
-cd /Users/glowingstone/CLionProjects/vm
-
 test -f disk.img || truncate -s 16M disk.img
 dd if=build-kernel/kernel.elf of=disk.img bs=512 seek=1 conv=notrunc
 ```
@@ -93,7 +89,6 @@ dd if=build-kernel/kernel.elf of=disk.img bs=512 seek=1 conv=notrunc
 ### 3) Build BIOS boot image
 
 ```bash
-cd /Users/glowingstone/CLionProjects/vm/bios
 
 $LAMP_CLANG --target=lamp-unknown-unknown -c bios.c -o bios.o
 $LAMP_LD -T boot_flat.ld bios.o -o boot.bin
@@ -102,6 +97,5 @@ $LAMP_LD -T boot_flat.ld bios.o -o boot.bin
 ### 4) Boot VM
 
 ```bash
-cd /Users/glowingstone/CLionProjects/vm
 ./build/vm --bin bios/boot.bin --smp 1
 ```

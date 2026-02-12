@@ -6,17 +6,7 @@ This directory contains the LampVM BIOS source (`bios.c`).
 
 ## Prerequisites
 
-- LLVM/Lamp toolchain built at:
-  `/Users/glowingstone/CLionProjects/llvm-project/build-all/bin`
-- VM project root:
-  `/Users/glowingstone/CLionProjects/vm`
-
-You can optionally define:
-
-```bash
-export LAMP_CLANG=/Users/glowingstone/CLionProjects/llvm-project/build-all/bin/clang
-export LAMP_LD=/Users/glowingstone/CLionProjects/llvm-project/build-all/bin/ld.lld
-```
+This project needs a custom LLVM toolchain to compile.
 
 ## Output Format A: Legacy Flat `boot.bin` (VM `--bin` format)
 
