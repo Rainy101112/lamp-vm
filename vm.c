@@ -110,6 +110,12 @@ static inline void ensure_atomic_aligned_or_panic(VM *vm, vm_addr_t addr, const 
     }
 }
 
+static inline vm_addr_t rel_target_from_last_ip(const VCPU *cpu, int32_t imm) {
+    const int64_t base = (int64_t)(vm_addr_t)cpu->last_ip;
+    const int64_t target = base + (int64_t)imm;
+    return (vm_addr_t)target;
+}
+
 void vm_instruction_case(VM *vm) {
     VCPU *cpu = vm_current_cpu(vm);
     if (!cpu)
@@ -154,6 +160,10 @@ void vm_instruction_case(VM *vm) {
             cpu->ip = (size_t)(vm_addr_t)imm;
             break;
         }
+        case OP_RJMP: {
+            cpu->ip = (size_t)rel_target_from_last_ip(cpu, imm);
+            break;
+        }
         case OP_PUSH: {
             data_push(vm, cpu->regs[rd]);
             break;
@@ -166,6 +176,11 @@ void vm_instruction_case(VM *vm) {
         case OP_CALL: {
             call_push(vm, (uint64_t)(vm_addr_t)cpu->ip);
             cpu->ip = (size_t)(vm_addr_t)imm;
+            break;
+        }
+        case OP_RCALL: {
+            call_push(vm, (uint64_t)(vm_addr_t)cpu->ip);
+            cpu->ip = (size_t)rel_target_from_last_ip(cpu, imm);
             break;
         }
         case OP_CALLR: {
@@ -364,9 +379,21 @@ void vm_instruction_case(VM *vm) {
             }
             break;
         }
+        case OP_RJZ: {
+            if (cpu->flags & FLAG_ZF) {
+                cpu->ip = (size_t)rel_target_from_last_ip(cpu, imm);
+            }
+            break;
+        }
         case OP_JNZ: {
             if (!(cpu->flags & FLAG_ZF)) {
                 cpu->ip = (size_t)(vm_addr_t)imm;
+            }
+            break;
+        }
+        case OP_RJNZ: {
+            if (!(cpu->flags & FLAG_ZF)) {
+                cpu->ip = (size_t)rel_target_from_last_ip(cpu, imm);
             }
             break;
         }
@@ -1082,12 +1109,52 @@ static int run_selftest_ipi(void) {
     return ok;
 }
 
+static int run_selftest_relctrl(void) {
+    const vm_addr_t flag_addr = 0x3020;
+    uint64_t program[] = {
+        INST(OP_MOVI, 10, 0, 0, flag_addr), /* r10 = flag addr */
+        INST(OP_MOVI, 11, 0, 0, 0),         /* r11 = 0 */
+        INST(OP_STORE32, 11, 10, 0, 0),     /* *flag = 0 */
+        INST(OP_MOVI, 1, 0, 0, 0),          /* r1 = 0 */
+        INST(OP_RJMP, 0, 0, 0, 16),         /* skip next insn */
+        INST(OP_MOVI, 1, 0, 0, 111),        /* should not execute */
+        INST(OP_RCALL, 0, 0, 0, 104),       /* call fn at idx 19 */
+        INST(OP_CMPI, 1, 0, 0, 7),          /* ZF = 1 */
+        INST(OP_RJZ, 0, 0, 0, 16),          /* go to idx 10 */
+        INST(OP_RJMP, 0, 0, 0, 56),         /* fail */
+        INST(OP_CMPI, 1, 0, 0, 8),          /* ZF = 0 */
+        INST(OP_RJNZ, 0, 0, 0, 16),         /* go to idx 13 */
+        INST(OP_RJMP, 0, 0, 0, 32),         /* fail */
+        INST(OP_MOVI, 11, 0, 0, 1),         /* pass: *flag = 1 */
+        INST(OP_STORE32, 11, 10, 0, 0),
+        INST(OP_HALT, 0, 0, 0, 0),
+        INST(OP_MOVI, 11, 0, 0, 2),         /* fail: *flag = 2 */
+        INST(OP_STORE32, 11, 10, 0, 0),
+        INST(OP_HALT, 0, 0, 0, 0),
+        INST(OP_MOVI, 1, 0, 0, 7),          /* function body */
+        INST(OP_RET, 0, 0, 0, 0),
+    };
+
+    VM *vm = vm_create(MEM_SIZE, program, sizeof(program) / sizeof(program[0]), NULL, 0, NULL, 1);
+    if (!vm)
+        return 0;
+    disk_init(vm, "./disk.img");
+    init_ivt(vm);
+    int ok = vm_run_headless(vm, 1000);
+    uint32_t flag = vm_read32(vm, flag_addr);
+    ok = ok && (flag == 1);
+    vm_destroy(vm);
+    return ok;
+}
+
 static int run_selftests(void) {
     int ok1 = run_selftest_startap_cpuid();
     int ok2 = run_selftest_ipi();
+    int ok3 = run_selftest_relctrl();
     printf("[selftest] startap_cpuid: %s\n", ok1 ? "PASS" : "FAIL");
     printf("[selftest] ipi: %s\n", ok2 ? "PASS" : "FAIL");
-    return (ok1 && ok2) ? 0 : 1;
+    printf("[selftest] relctrl: %s\n", ok3 ? "PASS" : "FAIL");
+    return (ok1 && ok2 && ok3) ? 0 : 1;
 }
 
 int main(int argc, char **argv) {

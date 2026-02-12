@@ -239,6 +239,10 @@ enum {
     OP_IPI = 0x47,
     OP_CPUID = 0x48,
     OP_CALLR = 0x49,
+    OP_RJMP = 0x4A,
+    OP_RCALL = 0x4B,
+    OP_RJZ = 0x4C,
+    OP_RJNZ = 0x4D,
 };
 
 void vm_dump(const VM *vm, int mem_preview);

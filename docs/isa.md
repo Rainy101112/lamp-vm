@@ -135,6 +135,7 @@ This rule is fixed and applies to all current and future instructions.
 - `STOREX32`
 - `FSTORE32`
 - `CALL`
+- `RCALL`
 - `RET`
 - `INT`
 - `IRET`
@@ -469,7 +470,7 @@ Same semantics as `CMP`.
 
 ## 9. Control Flow Instructions
 
-All jump targets are **absolute addresses** (`imm`).
+Absolute control-flow instructions use **absolute VM addresses** (`imm`).
 
 ### JMP imm
 
@@ -491,6 +492,35 @@ Unconditional jump.
 | JLE         | ZF == 1 or SF != OF  |
 
 Signed comparison semantics are used.
+
+---
+
+Relative control-flow instructions use signed PC-relative displacement:
+
+```
+target = current_instruction_address + imm
+```
+
+`current_instruction_address` is the address of the executing branch/call itself
+(not the next instruction).
+
+### RJMP imm
+
+Unconditional relative jump.
+
+### RCALL imm
+
+Relative call:
+
+- pushes return address (next instruction) to call stack
+- jumps to `current_instruction_address + imm`
+
+### RJZ imm / RJNZ imm
+
+Relative conditional jumps:
+
+- `RJZ`: take branch when `ZF == 1`
+- `RJNZ`: take branch when `ZF == 0`
 
 ---
 

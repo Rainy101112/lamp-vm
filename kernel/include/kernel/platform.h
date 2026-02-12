@@ -6,6 +6,12 @@
 #define KERNEL_MEM_SIZE 0x00400000u
 #define KERNEL_IVT_SIZE 256u
 
+#define FB_WIDTH 640u
+#define FB_HEIGHT 480u
+#define FB_BPP 4u
+#define FB_SIZE (FB_WIDTH * FB_HEIGHT * FB_BPP)
+#define FB_BASE KERNEL_MEM_SIZE
+
 #define IRQ_KEYBOARD 0x00u
 #define IRQ_DIVIDE_BY_ZERO 0x01u
 #define IRQ_DISK_COMPLETE 0x02u

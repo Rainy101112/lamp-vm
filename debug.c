@@ -93,6 +93,10 @@ static const char *op_name(uint8_t op) {
         [OP_IPI] = "IPI",
         [OP_CPUID] = "CPUID",
         [OP_CALLR] = "CALLR",
+        [OP_RJMP] = "RJMP",
+        [OP_RCALL] = "RCALL",
+        [OP_RJZ] = "RJZ",
+        [OP_RJNZ] = "RJNZ",
     };
     return names[op] ? names[op] : "UNKNOWN";
 }
