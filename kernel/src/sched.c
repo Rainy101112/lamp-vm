@@ -39,6 +39,7 @@ unsigned int sched_ticks(void) {
 
 void sched_run(void) {
     for (;;) {
+        irq_poll_input_echo();
         if (g_need_resched) {
             g_need_resched = 0;
             /*

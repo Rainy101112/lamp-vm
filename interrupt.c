@@ -38,14 +38,18 @@ void vm_enter_interrupt(VM *vm, uint32_t int_no) {
     if (isr_ip == UINT64_MAX)
         return;
 
-    cpu->regs[ISR_ARG_REG] = int_no;
-
     isr_push(vm, (uint64_t)cpu->ip);
     isr_push(vm, (uint64_t)cpu->flags);
 
     for (uint32_t i = 0; i < REG_COUNT; i++) {
         isr_push_u32(vm, cpu->regs[i]);
     }
+
+    /*
+     * Preserve full pre-interrupt register context (including r31) on ISR stack.
+     * Then expose interrupt number in r31 for ISR runtime.
+     */
+    cpu->regs[ISR_ARG_REG] = int_no;
 
     cpu->ip = (size_t)(vm_addr_t)isr_ip;
     cpu->in_interrupt = 1;

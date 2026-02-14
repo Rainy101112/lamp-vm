@@ -4,6 +4,11 @@
 #define MEM_SIZE (4u * 1024u * 1024u)
 #define IVT_BASE 0x0000u
 #define IVT_ENTRY_SIZE 8u
+#define SYSINFO_MMIO_BASE 0x0074C000u
+#define SYSINFO_MAGIC 0x31494D56u /* "VMI1" */
+#define BOOTINFO_ADDR 0x002FF000u
+#define BOOTINFO_MAGIC 0x3049424Cu /* "LBI0" */
+#define BOOTINFO_VERSION 1u
 
 // Disk IO ports (match io.h)
 #define DISK_CMD   0x10
@@ -55,6 +60,10 @@ static inline void write_u64(uint32_t addr, uint64_t v) {
     write_u32(addr + 4, (uint32_t)(v >> 32));
 }
 
+static inline uint32_t read_u32(uint32_t addr) {
+    return *(volatile uint32_t *)(uintptr_t)addr;
+}
+
 static inline void *memcpy8(void *dst, const void *src, uint32_t n) {
     uint8_t *d = (uint8_t *)dst;
     const uint8_t *s = (const uint8_t *)src;
@@ -97,6 +106,27 @@ typedef struct {
 } Elf32_Phdr;
 
 static volatile uint32_t disk_done = 0;
+
+static void bios_publish_boot_info(void) {
+    uint32_t magic = read_u32(SYSINFO_MMIO_BASE + 0x00u);
+    if (magic != SYSINFO_MAGIC) {
+        write_u32(BOOTINFO_ADDR + 0x00u, 0u);
+        return;
+    }
+
+    write_u32(BOOTINFO_ADDR + 0x00u, BOOTINFO_MAGIC);
+    write_u32(BOOTINFO_ADDR + 0x04u, BOOTINFO_VERSION);
+    write_u32(BOOTINFO_ADDR + 0x08u, 0x30u);
+    write_u32(BOOTINFO_ADDR + 0x0Cu, read_u32(SYSINFO_MMIO_BASE + 0x04u));
+    write_u32(BOOTINFO_ADDR + 0x10u, read_u32(SYSINFO_MMIO_BASE + 0x08u));
+    write_u32(BOOTINFO_ADDR + 0x14u, read_u32(SYSINFO_MMIO_BASE + 0x0Cu));
+    write_u32(BOOTINFO_ADDR + 0x18u, read_u32(SYSINFO_MMIO_BASE + 0x10u));
+    write_u32(BOOTINFO_ADDR + 0x1Cu, read_u32(SYSINFO_MMIO_BASE + 0x14u));
+    write_u32(BOOTINFO_ADDR + 0x20u, read_u32(SYSINFO_MMIO_BASE + 0x18u));
+    write_u32(BOOTINFO_ADDR + 0x24u, read_u32(SYSINFO_MMIO_BASE + 0x1Cu));
+    write_u32(BOOTINFO_ADDR + 0x28u, read_u32(SYSINFO_MMIO_BASE + 0x20u));
+    write_u32(BOOTINFO_ADDR + 0x2Cu, read_u32(SYSINFO_MMIO_BASE + 0x24u));
+}
 
 __attribute__((naked)) void isr_disk_complete(void) {
     __asm__ volatile (
@@ -188,6 +218,7 @@ static void elf_load_and_jump(void) {
 
 void bios_main(void) {
     register_isr(INT_DISK_COMPLETE, isr_disk_complete);
+    bios_publish_boot_info();
     elf_load_and_jump();
     halt();
 }

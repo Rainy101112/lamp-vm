@@ -23,12 +23,14 @@ Establish a stable bring-up skeleton before implementing policy:
 - `include/kernel/irq.h`: IRQ handlers API
 - `include/kernel/sched.h`: scheduler API
 - `include/kernel/smp.h`: BSP/AP interfaces
+- `include/kernel/vm_info.h`: BootInfo metadata from BIOS handoff
 - `include/kernel/spinlock.h`: lock primitive API
 - `src/entry.c`: `kernel_entry` and top-level init sequence
 - `src/trap.c`: trap dispatch skeleton
 - `src/irq.c`: IRQ handlers skeleton
 - `src/sched.c`: minimal scheduler loop
 - `src/smp.c`: SMP bootstrap skeleton
+- `src/vm_info.c`: BootInfo decode/log helper
 - `src/spinlock.c`: spinlock skeleton (to be wired to atomic ISA ops)
 
 ## Bring-up Order
@@ -43,6 +45,7 @@ Establish a stable bring-up skeleton before implementing policy:
 BIOS behavior is fixed by `docs/bios.md`:
 
 - BIOS loads ELF PT_LOAD segments and jumps to `e_entry`.
+- BIOS publishes BootInfo at fixed address before handoff.
 - Kernel must reinitialize IVT/trap policy on entry.
 - Kernel must not assume register state beyond control transfer.
 - Kernel headers avoid libc integer headers and use `kernel/types.h`.

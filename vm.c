@@ -18,6 +18,7 @@
 #include "memory.h"
 #include "io_devices/disk/disk.h"
 #include "io_devices/frame/frame.h"
+#include "io_devices/sysinfo/sysinfo_mmio_register.h"
 #include "io_devices/time/time_mmio_register.h"
 #include "io_devices/vga_display/display.h"
 #include "io_devices/vga_display/vga_mmio_register.h"
@@ -951,8 +952,10 @@ VM *vm_create(size_t memory_size,
     printf("Initializing MMIO.... \n");
     vm->mmio_count = 0;
     memset(vm->mmio_devices, 0, sizeof(vm->mmio_devices));
+    vm->disk_size_bytes = DISK_SIZE;
     register_fb_mmio(vm);
     register_time_mmio(vm);
+    register_sysinfo_mmio(vm);
     size_t prog_bytes = program_size * sizeof(uint64_t);
     uint32_t text_base = PROGRAM_BASE;
     uint32_t data_base = PROGRAM_BASE + (uint32_t) prog_bytes;

@@ -6,6 +6,7 @@
 #include "../include/kernel/smp.h"
 #include "../include/kernel/trap.h"
 #include "../include/kernel/types.h"
+#include "../include/kernel/vm_info.h"
 
 static volatile uint32_t g_kernel_booted;
 
@@ -21,6 +22,7 @@ void kernel_entry(void) {
     kernel_early_init();
     console_fb_init();
     kprintf("LAMP KERNEL V0.03 IRQ+IO+LOG RX-LATCH\n");
+    vm_info_log_boot();
 
     /* Kernel owns IVT policy after BIOS handoff. */
     trap_init();

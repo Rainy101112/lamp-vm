@@ -8,9 +8,10 @@ The BIOS is a minimal stage-0 loader. It does only:
 
 1. set early stack
 2. install disk-complete ISR
-3. read kernel ELF from disk
-4. load PT_LOAD segments into RAM
-5. jump to ELF `e_entry`
+3. read VM metadata from firmware MMIO and publish BootInfo block
+4. read kernel ELF from disk
+5. load PT_LOAD segments into RAM
+6. jump to ELF `e_entry`
 
 No scheduler, no memory manager, no AP startup logic in BIOS.
 
@@ -40,6 +41,20 @@ At kernel entry jump (`e_entry`):
 - Control transfer is a direct function jump (`entry()`).
 - Registers are not sanitized beyond BIOS execution side effects.
 - Kernel must reinitialize the execution environment it depends on.
+
+## BootInfo Handoff
+
+BIOS publishes a fixed BootInfo block at `0x002FF000` before jumping to kernel.
+
+- `magic` = `0x3049424C` (`"LBI0"`)
+- `version` = `1`
+- `size` = `0x30`
+- vendor (16 bytes)
+- memory size bytes (`lo/hi`)
+- disk size bytes (`lo/hi`)
+- SMP core count
+
+Source of these fields is SYSINFO MMIO (`0x0074C000`), which is read-only firmware metadata provided by the VM.
 
 ## Memory Ownership
 

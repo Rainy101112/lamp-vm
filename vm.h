@@ -56,6 +56,19 @@ typedef struct VM_Debug VM_Debug;
 
 #define FB_BASE(addr_space_size) (addr_space_size)
 #define FB_LEGACY_BASE 0x00620000u
+#define SYSINFO_BASE (FB_LEGACY_BASE + FB_SIZE)
+#define SYSINFO_MAGIC 0x31494D56u /* "VMI1" */
+#define SYSINFO_VENDOR_WORDS 4u
+#define SYSINFO_VENDOR_BYTES (SYSINFO_VENDOR_WORDS * 4u)
+#define SYSINFO_REG_MAGIC 0x00u
+#define SYSINFO_REG_VENDOR0 0x04u
+#define SYSINFO_REG_MEM_BYTES_LO 0x14u
+#define SYSINFO_REG_MEM_BYTES_HI 0x18u
+#define SYSINFO_REG_DISK_BYTES_LO 0x1Cu
+#define SYSINFO_REG_DISK_BYTES_HI 0x20u
+#define SYSINFO_REG_SMP_CORES 0x24u
+#define SYSINFO_REG_LAYOUT_VERSION 0x28u
+#define SYSINFO_SIZE 0x2Cu
 typedef uint32_t vm_addr_t;
 
 typedef struct {
@@ -132,6 +145,8 @@ struct VM{
     uint64_t latched_realtime;
     uint64_t latched_monotonic;
     uint64_t latched_boottime;
+    uint64_t disk_size_bytes;
+    uint32_t sysinfo_vendor_words[SYSINFO_VENDOR_WORDS];
 
     int suspend_count;
 

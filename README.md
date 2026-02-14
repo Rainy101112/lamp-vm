@@ -122,6 +122,13 @@ Header fields:
 | PROGRAM | `0x00201C` | `FB_BASE-1` | variable | text/data/bss |
 | FrameBuffer | `FB_BASE` | `FB_BASE+FB_SIZE-1` | variable | video buffer |
 
+Additional fixed MMIO regions:
+
+| Region | Start | End | Size | Purpose |
+|---|---|---|---|---|
+| Legacy FrameBuffer Alias | `0x00620000` | `0x0074BFFF` | 1228800 B | video buffer legacy mapping |
+| SYSINFO MMIO | `0x0074C000` | `0x0074C02B` | 44 B | firmware-style VM metadata |
+
 ## Debug Build (Optional)
 
 Enable debug features:

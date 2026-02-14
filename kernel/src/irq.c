@@ -126,8 +126,11 @@ __asm__(
     ".text\n"
     ".globl irq_stub_entry\n"
     "irq_stub_entry:\n"
+    "  mov r2, r31\n"
+    "  movi r30, 0x003FF000\n"
+    "  mov r31, r30\n"
     "  movi r0, g_irq_stub_no\n"
-    "  store32 r31, r0, 0\n"
+    "  store32 r2, r0, 0\n"
     "  call irq_common_entry_from_stub\n"
     "  iret\n"
 );

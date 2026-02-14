@@ -23,6 +23,20 @@ static int is_valid_dma(VM *vm, size_t addr, size_t count) {
     return 1;
 }
 
+static uint64_t disk_detect_size_bytes(FILE *fp) {
+    if (!fp) {
+        return DISK_SIZE;
+    }
+    if (fseek(fp, 0, SEEK_END) != 0) {
+        return DISK_SIZE;
+    }
+    long end = ftell(fp);
+    if (end < 0) {
+        return DISK_SIZE;
+    }
+    return (uint64_t)(unsigned long)end;
+}
+
 void* disk_worker(void *arg) {
     VM* vm = arg;
     while (1) {
@@ -105,6 +119,7 @@ void disk_init(VM *vm, const char *path) {
     vm->disk.lba = 0;
     vm->disk.mem_addr = 0;
     vm->disk.count = 0;
+    vm->disk_size_bytes = disk_detect_size_bytes(vm->disk.fp);
     vm->disk.status = DISK_STATUS_FREE;
     vm->disk.current_cmd = DISK_CMD_NONE;
     vm->disk.op_complete = false;
