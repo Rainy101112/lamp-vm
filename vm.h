@@ -120,6 +120,9 @@ struct VM{
     pthread_mutex_t fb_row_locks[FB_HEIGHT];
 
     int io[IO_SIZE];
+    uint8_t serial_rx_fifo[256];
+    uint16_t serial_rx_head;
+    uint16_t serial_rx_tail;
 
     Disk disk;
     atomic_uint_fast64_t *interrupt_bitmap;
@@ -147,6 +150,13 @@ struct VM{
     pthread_mutex_t shared_lock;
     vm_addr_t stack_pool_base;
     size_t stack_pool_size;
+
+    atomic_uint timer_period_us;
+    atomic_uint_fast64_t timer_next_deadline_ns;
+    atomic_bool timer_enabled;
+    atomic_bool timer_thread_running;
+    int timer_thread_started;
+    pthread_t timer_worker_thread;
 
 #ifdef VM_DEBUG
     VM_Debug *debug;

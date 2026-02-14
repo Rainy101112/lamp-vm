@@ -1,7 +1,6 @@
 #include "../include/kernel/trap.h"
 #include "../include/kernel/irq.h"
 #include "../include/kernel/platform.h"
-#include "../include/kernel/sched.h"
 #include "../include/kernel/types.h"
 
 static trap_handler_t g_trap_table[KERNEL_IVT_SIZE];
@@ -34,11 +33,13 @@ void trap_init(void) {
     trap_register(IRQ_DISK_COMPLETE, irq_disk_complete);
     trap_register(IRQ_SERIAL, irq_serial);
     trap_register(IRQ_KEYBOARD, irq_keyboard);
+    trap_register(IRQ_TIMER, irq_timer);
 
     g_irq_mask[IRQ_DIVIDE_BY_ZERO / 32u] |= (1u << (IRQ_DIVIDE_BY_ZERO % 32u));
     g_irq_mask[IRQ_DISK_COMPLETE / 32u] |= (1u << (IRQ_DISK_COMPLETE % 32u));
     g_irq_mask[IRQ_SERIAL / 32u] |= (1u << (IRQ_SERIAL % 32u));
     g_irq_mask[IRQ_KEYBOARD / 32u] |= (1u << (IRQ_KEYBOARD % 32u));
+    g_irq_mask[IRQ_TIMER / 32u] |= (1u << (IRQ_TIMER % 32u));
 
     g_trap_ready = 1u;
 }
@@ -53,5 +54,4 @@ void trap_dispatch(uint32_t irq_no) {
     }
 
     g_trap_table[irq_no](irq_no);
-    schedule_tick();
 }

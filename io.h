@@ -1,6 +1,10 @@
 #ifndef VM_IO_H
 #define VM_IO_H
+
+#include <stdint.h>
+
 void accept_io(VM *vm, int addr, int value);
+int vm_serial_rx_enqueue(VM *vm, uint8_t c);
 
 enum IO_TABLE {
     SCREEN = 0x01,

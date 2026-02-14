@@ -151,7 +151,6 @@ void vm_instruction_case(VM *vm) {
             break;
         }
         case OP_HALT: {
-            flush_screen_final();
             vm->halted = 1;
             return;
         }
@@ -274,10 +273,19 @@ void vm_instruction_case(VM *vm) {
             if (addr >= 0 && addr < IO_SIZE) {
                 vm_shared_lock(vm);
                 if (addr == KEYBOARD) {
-                    const int v = vm->io[KEYBOARD];
+                    int v = 0;
+                    if (vm->serial_rx_tail != vm->serial_rx_head) {
+                        v = (int)vm->serial_rx_fifo[vm->serial_rx_tail];
+                        vm->serial_rx_tail = (uint16_t)((vm->serial_rx_tail + 1u) & 0xFFu);
+                    }
                     cpu->regs[rd] = v;
-                    vm->io[KEYBOARD] = 0;
-                    vm->io[SCREEN_ATTRIBUTE] &= ~SERIAL_STATUS_RX_READY;
+                    if (vm->serial_rx_tail != vm->serial_rx_head) {
+                        vm->io[KEYBOARD] = (int)vm->serial_rx_fifo[vm->serial_rx_tail];
+                        vm->io[SCREEN_ATTRIBUTE] |= SERIAL_STATUS_RX_READY;
+                    } else {
+                        vm->io[KEYBOARD] = 0;
+                        vm->io[SCREEN_ATTRIBUTE] &= ~SERIAL_STATUS_RX_READY;
+                    }
                     /*
                      * RX read acts as IRQ acknowledge: clear serial/keyboard bits on core 0.
                      * This prevents stale pending bits from retriggering the same input forever.
@@ -288,6 +296,10 @@ void vm_instruction_case(VM *vm) {
                         const uint_fast64_t keyboard_mask = (uint_fast64_t)(1ULL << (INT_KEYBOARD & 63u));
                         const uint_fast64_t clear_mask = ~(serial_mask | keyboard_mask);
                         atomic_fetch_and(&vm->interrupt_bitmap[word_idx], clear_mask);
+                    }
+                    if (vm->serial_rx_tail != vm->serial_rx_head &&
+                        ((vm->io[SCREEN_ATTRIBUTE] >> 8) & SERIAL_CTRL_RX_INT_ENABLE)) {
+                        trigger_interrupt(vm, INT_SERIAL);
                     }
                 } else if (addr == SCREEN_ATTRIBUTE) {
                     cpu->regs[rd] = vm->io[SCREEN_ATTRIBUTE] & 0xFF;
@@ -1050,6 +1062,14 @@ VM *vm_create(size_t memory_size,
 void vm_destroy(VM *vm) {
     if (!vm)
         return;
+
+    if (vm->timer_thread_started) {
+        atomic_store(&vm->timer_enabled, false);
+        atomic_store(&vm->timer_thread_running, false);
+        pthread_join(vm->timer_worker_thread, NULL);
+        vm->timer_thread_started = 0;
+    }
+
     vm_debug_destroy(vm);
     disk_close(vm);
     pthread_mutex_destroy(&vm->shared_lock);
@@ -1292,7 +1312,6 @@ int main(int argc, char **argv) {
     vm_dump(vm, 1024);
 #endif
 
-    flush_screen_final();
     uint64_t total_execution_times = 0;
     for (int i = 0; i < vm->smp_cores; i++) {
         total_execution_times += atomic_load_explicit(&vm->cpus[i].execution_times, memory_order_relaxed);

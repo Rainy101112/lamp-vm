@@ -20,7 +20,7 @@ static void kernel_late_init(void) {
 void kernel_entry(void) {
     kernel_early_init();
     console_fb_init();
-    kprintf("LAMP KERNEL V0.02 IRQ+IO+LOG\n");
+    kprintf("LAMP KERNEL V0.03 IRQ+IO+LOG RX-LATCH\n");
 
     /* Kernel owns IVT policy after BIOS handoff. */
     trap_init();

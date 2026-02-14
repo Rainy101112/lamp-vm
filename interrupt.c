@@ -129,7 +129,7 @@ void register_isr(VM *vm, uint32_t int_no, uint64_t isr_ip) {
 }
 
 void trigger_interrupt(VM *vm, uint32_t int_no) {
-    trigger_interrupt_target(vm, 0, int_no);
+    trigger_interrupt_target(vm, BSP_CORE, int_no);
 }
 
 void trigger_interrupt_target(VM *vm, int core_id, uint32_t int_no) {

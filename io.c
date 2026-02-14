@@ -1,7 +1,41 @@
 #include "vm.h"
 #include "io.h"
 #include "io_devices/disk/disk.h"
+#include "interrupt.h"
 #include <unistd.h>
+
+#define SERIAL_RX_FIFO_MASK 0xFFu
+
+int vm_serial_rx_enqueue(VM *vm, uint8_t c) {
+    if (!vm) {
+        return 0;
+    }
+
+    vm_shared_lock(vm);
+
+    const uint16_t head = vm->serial_rx_head;
+    const uint16_t tail = vm->serial_rx_tail;
+    const uint16_t next = (uint16_t)((head + 1u) & SERIAL_RX_FIFO_MASK);
+    if (next == tail) {
+        vm_shared_unlock(vm);
+        return 0;
+    }
+
+    const int was_empty = (head == tail);
+    vm->serial_rx_fifo[head] = c;
+    vm->serial_rx_head = next;
+
+    if (was_empty) {
+        vm->io[KEYBOARD] = (int)vm->serial_rx_fifo[tail];
+        vm->io[SCREEN_ATTRIBUTE] |= SERIAL_STATUS_RX_READY;
+        if ((vm->io[SCREEN_ATTRIBUTE] >> 8) & SERIAL_CTRL_RX_INT_ENABLE) {
+            trigger_interrupt(vm, INT_SERIAL);
+        }
+    }
+
+    vm_shared_unlock(vm);
+    return 1;
+}
 
 void accept_io(VM *vm, const int addr, const int value) {
     if (addr < 0 || addr >= IO_SIZE)

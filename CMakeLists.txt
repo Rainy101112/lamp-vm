@@ -24,6 +24,7 @@ set(SOURCES
         mmio.c
         io_devices/vga_display/vga_mmio_register.c
         io_devices/time/time_mmio_register.c
+        io_devices/time/timer.c
         float.c
 )
 

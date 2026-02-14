@@ -25,6 +25,7 @@
 #define IRQ_DIVIDE_BY_ZERO 0x01u
 #define IRQ_DISK_COMPLETE 0x02u
 #define IRQ_SERIAL 0x03u
+#define IRQ_TIMER 0x04u
 
 #define TIMER_MMIO_BASE 0x00002000u
 
