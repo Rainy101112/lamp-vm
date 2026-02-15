@@ -15,6 +15,17 @@ static void sysinfo_init_vendor(VM *vm) {
     }
 }
 
+static uint32_t sysinfo_feature_bits(const VM *vm) {
+    uint32_t bits = SYSINFO_FEATURE_TIME_MMIO |
+                    SYSINFO_FEATURE_FB_MMIO |
+                    SYSINFO_FEATURE_DISK_IO |
+                    SYSINFO_FEATURE_TIMER_IRQ;
+    if (vm->smp_cores > 1) {
+        bits |= SYSINFO_FEATURE_SMP;
+    }
+    return bits;
+}
+
 static uint32_t sysinfo_read32(VM *vm, uint32_t addr) {
     const uint32_t offset = addr - SYSINFO_BASE;
     if (offset == SYSINFO_REG_MAGIC) {
@@ -42,7 +53,43 @@ static uint32_t sysinfo_read32(VM *vm, uint32_t addr) {
         return (uint32_t)vm->smp_cores;
     }
     if (offset == SYSINFO_REG_LAYOUT_VERSION) {
-        return 1u;
+        return SYSINFO_LAYOUT_VERSION;
+    }
+    if (offset == SYSINFO_REG_ARCH_ID) {
+        return SYSINFO_ARCH_LAMP32;
+    }
+    if (offset == SYSINFO_REG_ENDIAN) {
+        return SYSINFO_ENDIAN_LITTLE;
+    }
+    if (offset == SYSINFO_REG_PHYS_ADDR_BITS) {
+        return SYSINFO_PHYS_ADDR_BITS_32;
+    }
+    if (offset == SYSINFO_REG_PAGE_SIZE) {
+        return SYSINFO_DEFAULT_PAGE_SIZE;
+    }
+    if (offset == SYSINFO_REG_TIMER_FREQ_HZ) {
+        return SYSINFO_TIMER_FREQ_1GHZ;
+    }
+    if (offset == SYSINFO_REG_FEATURES) {
+        return sysinfo_feature_bits(vm);
+    }
+    if (offset == SYSINFO_REG_FB_WIDTH) {
+        return FB_WIDTH;
+    }
+    if (offset == SYSINFO_REG_FB_HEIGHT) {
+        return FB_HEIGHT;
+    }
+    if (offset == SYSINFO_REG_FB_BPP) {
+        return FB_BPP;
+    }
+    if (offset == SYSINFO_REG_FB_STRIDE_BYTES) {
+        return FB_WIDTH * FB_BPP;
+    }
+    if (offset == SYSINFO_REG_BOOT_REALTIME_NS_LO) {
+        return (uint32_t)(vm->start_realtime_ns & 0xFFFFFFFFu);
+    }
+    if (offset == SYSINFO_REG_BOOT_REALTIME_NS_HI) {
+        return (uint32_t)((vm->start_realtime_ns >> 32) & 0xFFFFFFFFu);
     }
 
     fprintf(stderr, "Unknown SYSINFO MMIO register offset: 0x%08x\n", offset);

@@ -25,7 +25,7 @@ done
 "$LAMP_LD" -T kernel/linker.ld -e kernel_entry \
   build-kernel/*.o -o build-kernel/kernel.elf
 
-test -f disk.img || truncate -s 16M disk.img
+test -f disk.img || truncate -s 512M disk.img
 
 dd if=build-kernel/kernel.elf of=disk.img \
    bs=512 seek=1 conv=notrunc

@@ -26,7 +26,7 @@
 #include "flags.h"
 #include "debug.h"
 
-const size_t MEM_SIZE = 1048576 * 4; // 4MB
+const size_t MEM_SIZE = 1048576 * 64; // 64MB
 enum { EXECUTION_TIMES_FLUSH_INTERVAL = 1024 };
 
 typedef struct {
@@ -116,6 +116,22 @@ static inline vm_addr_t rel_target_from_last_ip(const VCPU *cpu, int32_t imm) {
     const int64_t base = (int64_t)(vm_addr_t)cpu->last_ip;
     const int64_t target = base + (int64_t)imm;
     return (vm_addr_t)target;
+}
+
+static inline uint32_t rotl32(uint32_t v, uint32_t sh) {
+    sh &= 31u;
+    if (sh == 0u) {
+        return v;
+    }
+    return (v << sh) | (v >> (32u - sh));
+}
+
+static inline uint32_t rotr32(uint32_t v, uint32_t sh) {
+    sh &= 31u;
+    if (sh == 0u) {
+        return v;
+    }
+    return (v >> sh) | (v << (32u - sh));
 }
 
 void vm_instruction_case(VM *vm) {
@@ -369,6 +385,18 @@ void vm_instruction_case(VM *vm) {
             update_logic_flags(vm, cpu->regs[rd]);
             break;
         }
+        case OP_ROL: {
+            uint32_t sh = (uint32_t)cpu->regs[rs2] & 31u;
+            cpu->regs[rd] = (int32_t)rotl32((uint32_t)cpu->regs[rs1], sh);
+            update_logic_flags(vm, cpu->regs[rd]);
+            break;
+        }
+        case OP_ROR: {
+            uint32_t sh = (uint32_t)cpu->regs[rs2] & 31u;
+            cpu->regs[rd] = (int32_t)rotr32((uint32_t)cpu->regs[rs1], sh);
+            update_logic_flags(vm, cpu->regs[rd]);
+            break;
+        }
         case OP_DIV: {
             if (cpu->regs[rs2] != 0) {
                 cpu->regs[rd] = cpu->regs[rs1] / cpu->regs[rs2];
@@ -590,6 +618,18 @@ void vm_instruction_case(VM *vm) {
         case OP_SHRI: {
             uint32_t sh = (uint32_t)imm & 31u;
             cpu->regs[rd] = (int32_t)((uint32_t)cpu->regs[rs1] >> sh);
+            update_logic_flags(vm, cpu->regs[rd]);
+            break;
+        }
+        case OP_ROLI: {
+            uint32_t sh = (uint32_t)imm & 31u;
+            cpu->regs[rd] = (int32_t)rotl32((uint32_t)cpu->regs[rs1], sh);
+            update_logic_flags(vm, cpu->regs[rd]);
+            break;
+        }
+        case OP_RORI: {
+            uint32_t sh = (uint32_t)imm & 31u;
+            cpu->regs[rd] = (int32_t)rotr32((uint32_t)cpu->regs[rs1], sh);
             update_logic_flags(vm, cpu->regs[rd]);
             break;
         }

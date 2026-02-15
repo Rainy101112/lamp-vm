@@ -150,14 +150,23 @@ void disk_close(VM *vm) {
 
 void disk_read(VM *vm) {
     size_t addr = vm->disk.mem_addr;
+    size_t bytes = (size_t)vm->disk.count * DISK_SECTOR_SIZE;
     fseek(vm->disk.fp, vm->disk.lba * DISK_SECTOR_SIZE, SEEK_SET);
 
-    uint8_t buf[DISK_SIZE];
-    fread(buf, 1, DISK_SECTOR_SIZE * vm->disk.count, vm->disk.fp);
+    if (bytes == 0) {
+        return;
+    }
+    uint8_t *buf = malloc(bytes);
+    if (!buf) {
+        fprintf(stderr, "[Disk] OOM during legacy disk_read\n");
+        return;
+    }
+    fread(buf, 1, bytes, vm->disk.fp);
 
-    for (size_t i = 0; i < vm->disk.count * DISK_SECTOR_SIZE; i++) {
+    for (size_t i = 0; i < bytes; i++) {
         vm_write8(vm, addr + i, buf[i]);
     }
+    free(buf);
 }
 
 void disk_write(const VM *vm) {

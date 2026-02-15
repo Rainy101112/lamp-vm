@@ -3,10 +3,18 @@
 #include "../include/kernel/panic.h"
 #include "../include/kernel/platform.h"
 #include "../include/kernel/sched.h"
+#include "../include/kernel/syscall.h"
 #include "../include/kernel/trap.h"
 #include "../include/kernel/types.h"
 
 volatile uint32_t g_irq_stub_no;
+volatile uint32_t g_irq_stub_r0;
+volatile uint32_t g_irq_stub_r1;
+volatile uint32_t g_irq_stub_r2;
+volatile uint32_t g_irq_stub_r3;
+volatile uint32_t g_irq_stub_r4;
+volatile uint32_t g_irq_stub_r5;
+volatile uint32_t g_irq_stub_r6;
 static volatile trap_frame_t g_last_trap_frame;
 static volatile uint32_t g_irq_counts[KERNEL_IVT_SIZE];
 static volatile uint32_t g_fault_div0;
@@ -122,15 +130,49 @@ void irq_timer(uint32_t irq_no) {
     schedule_tick();
 }
 
+void irq_syscall(uint32_t irq_no) {
+    if (irq_no < KERNEL_IVT_SIZE) {
+        g_irq_counts[irq_no]++;
+    }
+    syscall_dispatch_from_irq_regs(g_irq_stub_r0,
+                                   g_irq_stub_r1,
+                                   g_irq_stub_r2,
+                                   g_irq_stub_r3,
+                                   g_irq_stub_r4,
+                                   g_irq_stub_r5,
+                                   g_irq_stub_r6);
+}
+
 __asm__(
     ".text\n"
     ".globl irq_stub_entry\n"
     "irq_stub_entry:\n"
+    "  mov r8, r0\n"
+    "  mov r9, r1\n"
+    "  mov r10, r2\n"
+    "  mov r11, r3\n"
+    "  mov r12, r4\n"
+    "  mov r13, r5\n"
+    "  mov r14, r6\n"
     "  mov r2, r31\n"
     "  movi r30, 0x003FF000\n"
     "  mov r31, r30\n"
     "  movi r0, g_irq_stub_no\n"
     "  store32 r2, r0, 0\n"
+    "  movi r0, g_irq_stub_r0\n"
+    "  store32 r8, r0, 0\n"
+    "  movi r0, g_irq_stub_r1\n"
+    "  store32 r9, r0, 0\n"
+    "  movi r0, g_irq_stub_r2\n"
+    "  store32 r10, r0, 0\n"
+    "  movi r0, g_irq_stub_r3\n"
+    "  store32 r11, r0, 0\n"
+    "  movi r0, g_irq_stub_r4\n"
+    "  store32 r12, r0, 0\n"
+    "  movi r0, g_irq_stub_r5\n"
+    "  store32 r13, r0, 0\n"
+    "  movi r0, g_irq_stub_r6\n"
+    "  store32 r14, r0, 0\n"
     "  call irq_common_entry_from_stub\n"
     "  iret\n"
 );

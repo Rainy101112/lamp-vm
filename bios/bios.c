@@ -1,14 +1,17 @@
 #include <stdint.h>
 
 // VM memory/layout constants
-#define MEM_SIZE (4u * 1024u * 1024u)
+#define MEM_SIZE (64u * 1024u * 1024u)
 #define IVT_BASE 0x0000u
 #define IVT_ENTRY_SIZE 8u
 #define SYSINFO_MMIO_BASE 0x0074C000u
 #define SYSINFO_MAGIC 0x31494D56u /* "VMI1" */
+#define SYSINFO_COPY_START 0x04u
+#define SYSINFO_COPY_END 0x58u
 #define BOOTINFO_ADDR 0x002FF000u
 #define BOOTINFO_MAGIC 0x3049424Cu /* "LBI0" */
-#define BOOTINFO_VERSION 1u
+#define BOOTINFO_VERSION 2u
+#define BOOTINFO_SIZE 0x64u
 
 // Disk IO ports (match io.h)
 #define DISK_CMD   0x10
@@ -116,16 +119,14 @@ static void bios_publish_boot_info(void) {
 
     write_u32(BOOTINFO_ADDR + 0x00u, BOOTINFO_MAGIC);
     write_u32(BOOTINFO_ADDR + 0x04u, BOOTINFO_VERSION);
-    write_u32(BOOTINFO_ADDR + 0x08u, 0x30u);
-    write_u32(BOOTINFO_ADDR + 0x0Cu, read_u32(SYSINFO_MMIO_BASE + 0x04u));
-    write_u32(BOOTINFO_ADDR + 0x10u, read_u32(SYSINFO_MMIO_BASE + 0x08u));
-    write_u32(BOOTINFO_ADDR + 0x14u, read_u32(SYSINFO_MMIO_BASE + 0x0Cu));
-    write_u32(BOOTINFO_ADDR + 0x18u, read_u32(SYSINFO_MMIO_BASE + 0x10u));
-    write_u32(BOOTINFO_ADDR + 0x1Cu, read_u32(SYSINFO_MMIO_BASE + 0x14u));
-    write_u32(BOOTINFO_ADDR + 0x20u, read_u32(SYSINFO_MMIO_BASE + 0x18u));
-    write_u32(BOOTINFO_ADDR + 0x24u, read_u32(SYSINFO_MMIO_BASE + 0x1Cu));
-    write_u32(BOOTINFO_ADDR + 0x28u, read_u32(SYSINFO_MMIO_BASE + 0x20u));
-    write_u32(BOOTINFO_ADDR + 0x2Cu, read_u32(SYSINFO_MMIO_BASE + 0x24u));
+    write_u32(BOOTINFO_ADDR + 0x08u, BOOTINFO_SIZE);
+
+    uint32_t bootinfo_off = 0x0Cu;
+    for (uint32_t sysinfo_off = SYSINFO_COPY_START;
+         sysinfo_off <= SYSINFO_COPY_END;
+         sysinfo_off += 4u, bootinfo_off += 4u) {
+        write_u32(BOOTINFO_ADDR + bootinfo_off, read_u32(SYSINFO_MMIO_BASE + sysinfo_off));
+    }
 }
 
 __attribute__((naked)) void isr_disk_complete(void) {

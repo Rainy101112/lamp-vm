@@ -1,10 +1,10 @@
-# LampVM BIOS Specification (v1)
+# LampVM BIOS Specification (v2)
 
-This document fixes the BIOS/kernel contract for current development.
+This document defines the BIOS/kernel handoff contract for current development.
 
 ## Scope
 
-The BIOS is a minimal stage-0 loader. It does only:
+The BIOS is a minimal stage-0 loader. It only:
 
 1. set early stack
 2. install disk-complete ISR
@@ -33,8 +33,9 @@ No scheduler, no memory manager, no AP startup logic in BIOS.
 
 At BIOS `_start`:
 
-- `r30` (SP) is initialized to `MEM_SIZE` (`0x00400000`).
+- `r30` (SP) is initialized to `MEM_SIZE` (`0x04000000`).
 - BIOS then calls `bios_main`.
+- `MEM_SIZE` is a build-time contract. If VM RAM size changes, BIOS should be rebuilt with the matching value.
 
 At kernel entry jump (`e_entry`):
 
@@ -47,14 +48,20 @@ At kernel entry jump (`e_entry`):
 BIOS publishes a fixed BootInfo block at `0x002FF000` before jumping to kernel.
 
 - `magic` = `0x3049424C` (`"LBI0"`)
-- `version` = `1`
-- `size` = `0x30`
+- `version` = `2`
+- `size` = `0x64`
 - vendor (16 bytes)
 - memory size bytes (`lo/hi`)
 - disk size bytes (`lo/hi`)
 - SMP core count
+- SYSINFO layout version, architecture id, endianness, physical address bits
+- page size and timer frequency
+- feature bitmap
+- framebuffer geometry (`width/height/bpp/stride`)
+- boot realtime timestamp (`lo/hi`)
 
-Source of these fields is SYSINFO MMIO (`0x0074C000`), which is read-only firmware metadata provided by the VM.
+These fields are sourced from SYSINFO MMIO (`0x0074C000`), a read-only firmware metadata region provided by the VM.
+Kernel should treat `mem_bytes` in BootInfo as runtime ground truth for memory-size validation.
 
 ## Memory Ownership
 
@@ -80,7 +87,7 @@ BIOS is fail-stop:
 - If validation/loading fails, execute `HALT`.
 - No recovery path, no fallback boot target.
 
-## Kernel Requirements (for v1 BIOS)
+## Kernel Requirements (for v2 BIOS)
 
 Kernel should do these first:
 
@@ -89,7 +96,7 @@ Kernel should do these first:
 3. set up its own stack and runtime sections
 4. enable timer/console/driver init
 
-## Out of Scope (v1)
+## Out of Scope (v2)
 
 - multiboot-style memory map passing
 - boot args / cmdline

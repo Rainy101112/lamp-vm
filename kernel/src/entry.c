@@ -4,10 +4,11 @@
 #include "../include/kernel/printk.h"
 #include "../include/kernel/sched.h"
 #include "../include/kernel/smp.h"
+#include "../include/kernel/syscall.h"
 #include "../include/kernel/trap.h"
 #include "../include/kernel/types.h"
 #include "../include/kernel/vm_info.h"
-
+#include "../include/kernel/panic.h"
 static volatile uint32_t g_kernel_booted;
 
 static void kernel_early_init(void) {
@@ -23,11 +24,12 @@ void kernel_entry(void) {
     console_fb_init();
     kprintf("LAMP KERNEL V0.03 IRQ+IO+LOG RX-LATCH\n");
     vm_info_log_boot();
-
     /* Kernel owns IVT policy after BIOS handoff. */
     trap_init();
     irq_input_init();
+    syscall_init();
     kprintf("TRAP: READY, INPUT IRQ ENABLED\n");
+    kprintf("SYSCALL: IRQ 0x80 DISPATCH READY\n");
 
     /* Keep single-core path first, then expand to SMP. */
     smp_init_bsp();
@@ -37,7 +39,6 @@ void kernel_entry(void) {
     kernel_late_init();
     kprintf("SCHED: START (TYPE TO ECHO)\n");
     sched_run();
-
     for (;;) {
         __asm__ __volatile__("" ::: "memory");
     }

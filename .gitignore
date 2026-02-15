@@ -4,3 +4,4 @@ build-release/
 *.o
 *.ll
 .DS_Store
+/bios/bios.s

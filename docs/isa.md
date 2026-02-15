@@ -5,10 +5,10 @@
 LampVM is a **register-based virtual machine** with **64-bit fixed-width instructions**
 and **32-bit general-purpose registers**, designed for system-level and educational use.
 
-- Instruction width: 64 bit
+- Instruction width: 64 bits
 - Register count: 32 (`r0` – `r31`)
-- Register width: 32 bit
-- Address space: 32 bit, byte-addressed
+- Register width: 32 bits
+- Address space: 32 bits, byte-addressed
 - Byte order: Little Endian
 - Execution model: SMP-capable (BSP/AP) with interrupt support
 
@@ -113,11 +113,15 @@ This rule is fixed and applies to all current and future instructions.
 - `SHL`
 - `SHR`
 - `SAR`
+- `ROL`
+- `ROR`
 - `ANDI`
 - `ORI`
 - `XORI`
 - `SHLI`
 - `SHRI`
+- `ROLI`
+- `RORI`
 - `MOV`
 - `MOVI`
 - `LOAD`
@@ -221,6 +225,20 @@ SHR: rd = (uint32)rs1 >> sh
 SAR: rd = (int32)rs1 >> sh
 ```
 
+- Update ZF and SF
+- Clear CF and OF
+
+---
+
+### ROL / ROR rd, rs1, rs2
+
+```
+sh = rs2 & 31
+ROL: rd = ((uint32)rs1 << sh) | ((uint32)rs1 >> (32 - sh))
+ROR: rd = ((uint32)rs1 >> sh) | ((uint32)rs1 << (32 - sh))
+```
+
+- If `sh == 0`, result is unchanged.
 - Update ZF and SF
 - Clear CF and OF
 
@@ -348,14 +366,17 @@ Bitwise immediate operations.
 
 ---
 
-### SHLI / SHRI rd, rs1, imm
+### SHLI / SHRI / ROLI / RORI rd, rs1, imm
 
 ```
 sh = imm & 31
 SHLI: rd = (uint32)rs1 << sh
 SHRI: rd = (uint32)rs1 >> sh
+ROLI: rd = ((uint32)rs1 << sh) | ((uint32)rs1 >> (32 - sh))
+RORI: rd = ((uint32)rs1 >> sh) | ((uint32)rs1 << (32 - sh))
 ```
 
+- If `sh == 0`, result is unchanged.
 - Update ZF and SF
 - Clear CF and OF
 
@@ -536,7 +557,7 @@ Relative conditional jumps:
 ### LOAD32 rd, [rs1 + imm]
 
 - Reads 32-bit value
-- Address must be 4-byte aligned
+- Address must be 4-byte aligned (misaligned access is undefined; current VM panics)
 
 ---
 
@@ -588,6 +609,8 @@ ISR must return using `IRET`.
 
 Nested interrupts are **not supported**.
 
+Software interrupts are raised with `INT rd`, where `rd` provides `int_no`.
+
 ---
 
 ## 13. IO Instructions
@@ -606,7 +629,7 @@ Out-of-range access causes VM panic.
 
 ---
 
-## 14. System Instruction
+## 14. System Instructions
 
 ### HALT
 
@@ -641,15 +664,16 @@ Sends interrupt `rs1` to target core `rd`.
 
 ### POP rd
 
-Pop a data out of data stack to rd register.
+Pops one value from the data stack into `rd`.
 
 ---
 
 ### PUSH rd
 
-Push a data in rd to data stack.
+Pushes the value in `rd` onto the data stack.
 
 ---
+
 ## 16. Undefined Behavior
 
 The following are undefined and may cause VM panic:

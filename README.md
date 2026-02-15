@@ -40,7 +40,7 @@ Notes:
 ## Run
 
 ```bash
-./build/vm --bin boot.bin --smp 1
+./build/vm --bin bios/boot.bin --smp 1
 ```
 
 Arguments:
@@ -127,7 +127,7 @@ Additional fixed MMIO regions:
 | Region | Start | End | Size | Purpose |
 |---|---|---|---|---|
 | Legacy FrameBuffer Alias | `0x00620000` | `0x0074BFFF` | 1228800 B | video buffer legacy mapping |
-| SYSINFO MMIO | `0x0074C000` | `0x0074C02B` | 44 B | firmware-style VM metadata |
+| SYSINFO MMIO | `0x0074C000` | `0x0074C05B` | 92 B | firmware-style VM metadata |
 
 ## Debug Build (Optional)
 
@@ -151,8 +151,10 @@ Runtime debug env vars:
 ## ISA
 
 See:
-- `docs/isa.md`
-- `docs/bios.md`
+- `isa.md`
+- `bios.md`
+- `kernel.md`
+- `bios-build.md`
 
 ## Kernel Developing
 

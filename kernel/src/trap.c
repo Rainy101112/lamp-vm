@@ -34,12 +34,14 @@ void trap_init(void) {
     trap_register(IRQ_SERIAL, irq_serial);
     trap_register(IRQ_KEYBOARD, irq_keyboard);
     trap_register(IRQ_TIMER, irq_timer);
+    trap_register(IRQ_SYSCALL, irq_syscall);
 
     g_irq_mask[IRQ_DIVIDE_BY_ZERO / 32u] |= (1u << (IRQ_DIVIDE_BY_ZERO % 32u));
     g_irq_mask[IRQ_DISK_COMPLETE / 32u] |= (1u << (IRQ_DISK_COMPLETE % 32u));
     g_irq_mask[IRQ_SERIAL / 32u] |= (1u << (IRQ_SERIAL % 32u));
     g_irq_mask[IRQ_KEYBOARD / 32u] |= (1u << (IRQ_KEYBOARD % 32u));
     g_irq_mask[IRQ_TIMER / 32u] |= (1u << (IRQ_TIMER % 32u));
+    g_irq_mask[IRQ_SYSCALL / 32u] |= (1u << (IRQ_SYSCALL % 32u));
 
     g_trap_ready = 1u;
 }

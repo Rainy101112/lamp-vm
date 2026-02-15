@@ -4,7 +4,7 @@
 
 #ifndef VM_DISK_H
 #define VM_DISK_H
-#define DISK_SIZE (1024 * 1024 * 16)
+#define DISK_SIZE (1024 * 1024 * 512)
 #define DISK_SECTOR_SIZE 512
 #define DISK_STATUS_FREE 0
 #define DISK_STATUS_BUSY 1
