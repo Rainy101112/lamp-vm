@@ -31,7 +31,8 @@ enum {
     ERRNO_EAGAIN = 11u,
     ERRNO_EFAULT = 14u,
     ERRNO_EINVAL = 22u,
-    ERRNO_ENOSYS = 38u
+    ERRNO_ENOSYS = 38u,
+    ERRNO_EOVERFLOW = 75u
 };
 
 typedef struct syscall_timespec32 {
@@ -45,11 +46,26 @@ typedef struct syscall_pollfd32 {
     int16_t revents;
 } syscall_pollfd32_t;
 
+typedef struct syscall_timeval32 {
+    int32_t tv_sec;
+    int32_t tv_usec;
+} syscall_timeval32_t;
+
 enum {
     NS_PER_SEC = 1000000000u,
     US_PER_SEC = 1000000u,
-    NS_PER_US = 1000u
+    NS_PER_US = 1000u,
+    CLOCK_RESOLUTION_NS = 1u,
+    TIME_MMIO_REALTIME_LO = TIMER_MMIO_BASE + 0x04u,
+    TIME_MMIO_REALTIME_HI = TIMER_MMIO_BASE + 0x08u,
+    TIME_MMIO_MONOTONIC_LO = TIMER_MMIO_BASE + 0x0Cu,
+    TIME_MMIO_MONOTONIC_HI = TIMER_MMIO_BASE + 0x10u,
+    TIME_MMIO_BOOT_LO = TIMER_MMIO_BASE + 0x14u,
+    TIME_MMIO_BOOT_HI = TIMER_MMIO_BASE + 0x18u
 };
+
+static uint32_t g_realtime_offset_neg;
+static uint64_t g_realtime_offset_mag_ns;
 
 static inline void abi_write32(uint32_t off, uint32_t v) {
     *(volatile uint32_t *)(uintptr_t)(SYSCALL_ABI_ADDR + off) = v;
@@ -110,6 +126,15 @@ static inline uint32_t abi_user_read_timespec(uint32_t addr, syscall_timespec32_
     return 1u;
 }
 
+static inline uint32_t abi_user_write_timespec(uint32_t addr, const syscall_timespec32_t *ts) {
+    if (!ts || !abi_ptr_range_ok(addr, 8u)) {
+        return 0u;
+    }
+    *(volatile uint32_t *)(uintptr_t)(addr + 0u) = (uint32_t)ts->tv_sec;
+    *(volatile uint32_t *)(uintptr_t)(addr + 4u) = (uint32_t)ts->tv_nsec;
+    return 1u;
+}
+
 static inline uint32_t abi_user_write_timespec_zero(uint32_t addr) {
     if (addr == 0u) {
         return 1u;
@@ -119,6 +144,15 @@ static inline uint32_t abi_user_write_timespec_zero(uint32_t addr) {
     }
     *(volatile uint32_t *)(uintptr_t)(addr + 0u) = 0u;
     *(volatile uint32_t *)(uintptr_t)(addr + 4u) = 0u;
+    return 1u;
+}
+
+static inline uint32_t abi_user_write_timeval(uint32_t addr, const syscall_timeval32_t *tv) {
+    if (!tv || !abi_ptr_range_ok(addr, 8u)) {
+        return 0u;
+    }
+    *(volatile uint32_t *)(uintptr_t)(addr + 0u) = (uint32_t)tv->tv_sec;
+    *(volatile uint32_t *)(uintptr_t)(addr + 4u) = (uint32_t)tv->tv_usec;
     return 1u;
 }
 
@@ -148,6 +182,101 @@ static inline uint32_t fd_can_read(int32_t fd) {
 
 static inline uint32_t fd_can_write(int32_t fd) {
     return (fd == 1 || fd == 2) ? 1u : 0u;
+}
+
+static inline uint64_t mmio_read_time_ns(uint32_t low_addr, uint32_t high_addr) {
+    uint32_t lo = *(volatile uint32_t *)(uintptr_t)low_addr;
+    uint32_t hi = *(volatile uint32_t *)(uintptr_t)high_addr;
+    return ((uint64_t)hi << 32) | (uint64_t)lo;
+}
+
+static uint32_t clockid_is_supported(int32_t clock_id) {
+    switch (clock_id) {
+        case (int32_t)SYS_CLOCK_REALTIME:
+        case (int32_t)SYS_CLOCK_MONOTONIC:
+        case 2:
+        case (int32_t)SYS_CLOCK_BOOTTIME:
+            return 1u;
+        default:
+            return 0u;
+    }
+}
+
+static inline uint64_t clock_apply_realtime_offset(uint64_t raw_ns) {
+    if (g_realtime_offset_neg == 0u) {
+        const uint64_t max_u64 = ~(uint64_t)0u;
+        if (raw_ns > max_u64 - g_realtime_offset_mag_ns) {
+            return max_u64;
+        }
+        return raw_ns + g_realtime_offset_mag_ns;
+    }
+    if (raw_ns <= g_realtime_offset_mag_ns) {
+        return 0u;
+    }
+    return raw_ns - g_realtime_offset_mag_ns;
+}
+
+static uint32_t clockid_read_time_ns(int32_t clock_id, uint64_t *out_ns) {
+    if (!out_ns) {
+        return 0u;
+    }
+    switch (clock_id) {
+        case (int32_t)SYS_CLOCK_REALTIME: {
+            uint64_t raw_ns = mmio_read_time_ns(TIME_MMIO_REALTIME_LO, TIME_MMIO_REALTIME_HI);
+            *out_ns = clock_apply_realtime_offset(raw_ns);
+            return 1u;
+        }
+        case (int32_t)SYS_CLOCK_MONOTONIC:
+            *out_ns = mmio_read_time_ns(TIME_MMIO_MONOTONIC_LO, TIME_MMIO_MONOTONIC_HI);
+            return 1u;
+        case 2:
+        case (int32_t)SYS_CLOCK_BOOTTIME:
+            *out_ns = mmio_read_time_ns(TIME_MMIO_BOOT_LO, TIME_MMIO_BOOT_HI);
+            return 1u;
+        default:
+            return 0u;
+    }
+}
+
+static uint32_t time_ns_to_timespec(uint64_t ns, syscall_timespec32_t *ts_out) {
+    uint64_t sec64;
+    if (!ts_out) {
+        return 0u;
+    }
+    sec64 = ns / (uint64_t)NS_PER_SEC;
+    if (sec64 > 0x7FFFFFFFu) {
+        return 0u;
+    }
+    ts_out->tv_sec = (int32_t)sec64;
+    ts_out->tv_nsec = (int32_t)(ns % (uint64_t)NS_PER_SEC);
+    return 1u;
+}
+
+static uint32_t time_ns_to_timeval(uint64_t ns, syscall_timeval32_t *tv_out) {
+    uint64_t sec64;
+    if (!tv_out) {
+        return 0u;
+    }
+    sec64 = ns / (uint64_t)NS_PER_SEC;
+    if (sec64 > 0x7FFFFFFFu) {
+        return 0u;
+    }
+    tv_out->tv_sec = (int32_t)sec64;
+    tv_out->tv_usec = (int32_t)((ns % (uint64_t)NS_PER_SEC) / (uint64_t)NS_PER_US);
+    return 1u;
+}
+
+static uint32_t timespec_to_ns(const syscall_timespec32_t *ts, uint64_t *out_ns) {
+    uint64_t sec_ns;
+    if (!ts || !out_ns) {
+        return 0u;
+    }
+    if (ts->tv_sec < 0 || ts->tv_nsec < 0 || ts->tv_nsec >= (int32_t)NS_PER_SEC) {
+        return 0u;
+    }
+    sec_ns = (uint64_t)(uint32_t)ts->tv_sec * (uint64_t)NS_PER_SEC;
+    *out_ns = sec_ns + (uint64_t)(uint32_t)ts->tv_nsec;
+    return 1u;
 }
 
 static uint32_t timeout_ms_to_ticks(int32_t timeout_ms) {
@@ -184,6 +313,8 @@ static inline void syscall_publish_result(const syscall_regs_t *regs, uint32_t r
 }
 
 void syscall_init(void) {
+    g_realtime_offset_neg = 0u;
+    g_realtime_offset_mag_ns = 0u;
     abi_write32(SYSCALL_ABI_OFF_MAGIC, SYSCALL_ABI_MAGIC);
     abi_write32(SYSCALL_ABI_OFF_VERSION, SYSCALL_ABI_VERSION);
     abi_write32(SYSCALL_ABI_OFF_LAST_NR, 0u);
@@ -667,6 +798,124 @@ uint32_t syscall_dispatch(const syscall_regs_t *regs) {
                 break;
             }
             ret = console_tty_set_lflag(lflag);
+            break;
+        }
+        case SYS_CLOCK_GETRES: {
+            int32_t clock_id = (int32_t)regs->arg0;
+            uint32_t res_addr = regs->arg1;
+            syscall_timespec32_t res;
+            if (!clockid_is_supported(clock_id)) {
+                err = ERRNO_EINVAL;
+                ret = (uint32_t)-1;
+                break;
+            }
+            if (res_addr != 0u) {
+                res.tv_sec = 0;
+                res.tv_nsec = (int32_t)CLOCK_RESOLUTION_NS;
+                if (!abi_user_write_timespec(res_addr, &res)) {
+                    err = ERRNO_EFAULT;
+                    ret = (uint32_t)-1;
+                    break;
+                }
+            }
+            ret = 0u;
+            break;
+        }
+        case SYS_CLOCK_GETTIME: {
+            int32_t clock_id = (int32_t)regs->arg0;
+            uint32_t ts_addr = regs->arg1;
+            uint64_t ns;
+            syscall_timespec32_t ts;
+            if (ts_addr == 0u) {
+                err = ERRNO_EFAULT;
+                ret = (uint32_t)-1;
+                break;
+            }
+            if (!clockid_read_time_ns(clock_id, &ns)) {
+                err = ERRNO_EINVAL;
+                ret = (uint32_t)-1;
+                break;
+            }
+            if (!time_ns_to_timespec(ns, &ts)) {
+                err = ERRNO_EOVERFLOW;
+                ret = (uint32_t)-1;
+                break;
+            }
+            if (!abi_user_write_timespec(ts_addr, &ts)) {
+                err = ERRNO_EFAULT;
+                ret = (uint32_t)-1;
+                break;
+            }
+            ret = 0u;
+            break;
+        }
+        case SYS_CLOCK_SETTIME: {
+            int32_t clock_id = (int32_t)regs->arg0;
+            uint32_t tp_addr = regs->arg1;
+            syscall_timespec32_t tp;
+            uint64_t target_ns;
+            uint64_t raw_ns;
+            if (clock_id == (int32_t)SYS_CLOCK_MONOTONIC) {
+                err = ERRNO_EINVAL;
+                ret = (uint32_t)-1;
+                break;
+            }
+            if (clock_id != (int32_t)SYS_CLOCK_REALTIME) {
+                err = ERRNO_EINVAL;
+                ret = (uint32_t)-1;
+                break;
+            }
+            if (tp_addr == 0u || !abi_user_read_timespec(tp_addr, &tp)) {
+                err = ERRNO_EFAULT;
+                ret = (uint32_t)-1;
+                break;
+            }
+            if (!timespec_to_ns(&tp, &target_ns)) {
+                err = ERRNO_EINVAL;
+                ret = (uint32_t)-1;
+                break;
+            }
+
+            raw_ns = mmio_read_time_ns(TIME_MMIO_REALTIME_LO, TIME_MMIO_REALTIME_HI);
+            if (target_ns >= raw_ns) {
+                g_realtime_offset_neg = 0u;
+                g_realtime_offset_mag_ns = target_ns - raw_ns;
+            } else {
+                g_realtime_offset_neg = 1u;
+                g_realtime_offset_mag_ns = raw_ns - target_ns;
+            }
+            ret = 0u;
+            break;
+        }
+        case SYS_GETTIMEOFDAY: {
+            uint32_t tv_addr = regs->arg0;
+            uint32_t tz_addr = regs->arg1;
+            uint64_t ns;
+            syscall_timeval32_t tv;
+            if (tv_addr == 0u) {
+                err = ERRNO_EFAULT;
+                ret = (uint32_t)-1;
+                break;
+            }
+            ns = clock_apply_realtime_offset(mmio_read_time_ns(TIME_MMIO_REALTIME_LO, TIME_MMIO_REALTIME_HI));
+            if (!time_ns_to_timeval(ns, &tv)) {
+                err = ERRNO_EOVERFLOW;
+                ret = (uint32_t)-1;
+                break;
+            }
+            if (!abi_user_write_timeval(tv_addr, &tv)) {
+                err = ERRNO_EFAULT;
+                ret = (uint32_t)-1;
+                break;
+            }
+            if (tz_addr != 0u) {
+                if (!abi_user_write32(tz_addr + 0u, 0u) || !abi_user_write32(tz_addr + 4u, 0u)) {
+                    err = ERRNO_EFAULT;
+                    ret = (uint32_t)-1;
+                    break;
+                }
+            }
+            ret = 0u;
             break;
         }
         default:

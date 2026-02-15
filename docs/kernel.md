@@ -65,7 +65,7 @@ Current limitations:
 
 - interrupt vector: `IRQ_SYSCALL = 0x80`
 - input registers at trap entry: `r0=nr`, `r1..r6=arg0..arg5`
-- initial syscalls: `getpid`, `yield`, `sleep_ticks`, `exit`, `waitpid`, `nanosleep`, `read`, `write`, `poll`, `select`, `tty_getmode`, `tty_setmode`
+- initial syscalls: `getpid`, `yield`, `sleep_ticks`, `exit`, `waitpid`, `nanosleep`, `read`, `write`, `poll`, `select`, `tty_getmode`, `tty_setmode`, `clock_getres`, `clock_gettime`, `clock_settime`, `gettimeofday`
 - return publishing: fixed mailbox at `SYSCALL_ABI_ADDR (0x002FE000)`
 
 Note:
@@ -104,6 +104,10 @@ Note:
 - `select` ABI: `arg0=nfds`, `arg1=read_mask*`, `arg2=write_mask*`, `arg3=except_mask*`, `arg4=timeout_ms`
 - fd model (current): `0=stdin`, `1=stdout`, `2=stderr`
 - `tty_getmode(fd)` and `tty_setmode(fd, lflag)` expose tty local mode bits
+- `clock_getres(clock_id, res*)` returns implementation resolution (`1ns`), `res==NULL` is allowed
+- `clock_gettime(clock_id, ts*)` supports `CLOCK_REALTIME(0)`, `CLOCK_MONOTONIC(1)`, and boot time (`2`/`7`)
+- `clock_settime(clock_id, ts*)` currently allows `CLOCK_REALTIME(0)` only; `CLOCK_MONOTONIC(1)` returns `EINVAL`
+- `gettimeofday(tv*, tz*)` returns realtime and writes zeroed legacy timezone data when `tz` is non-null
 - blocking `poll/select` currently follow transition semantics: task is parked/slept then syscall returns `-1/EAGAIN`, caller retries
 
 ## Contract With BIOS

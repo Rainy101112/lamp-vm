@@ -15,7 +15,11 @@ enum {
     SYS_POLL = 8u,
     SYS_SELECT = 9u,
     SYS_TTY_GETMODE = 10u,
-    SYS_TTY_SETMODE = 11u
+    SYS_TTY_SETMODE = 11u,
+    SYS_CLOCK_GETTIME = 12u,
+    SYS_GETTIMEOFDAY = 13u,
+    SYS_CLOCK_GETRES = 14u,
+    SYS_CLOCK_SETTIME = 15u
 };
 
 enum {
@@ -28,6 +32,12 @@ enum {
     SYS_POLLOUT = 0x0004u,
     SYS_POLLERR = 0x0008u,
     SYS_POLLNVAL = 0x0020u
+};
+
+enum {
+    SYS_CLOCK_REALTIME = 0u,
+    SYS_CLOCK_MONOTONIC = 1u,
+    SYS_CLOCK_BOOTTIME = 7u
 };
 
 typedef struct syscall_regs {
