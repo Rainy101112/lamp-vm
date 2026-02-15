@@ -11,12 +11,23 @@ enum {
     SYS_WAITPID = 4u,
     SYS_NANOSLEEP = 5u,
     SYS_READ = 6u,
-    SYS_WRITE = 7u
+    SYS_WRITE = 7u,
+    SYS_POLL = 8u,
+    SYS_SELECT = 9u,
+    SYS_TTY_GETMODE = 10u,
+    SYS_TTY_SETMODE = 11u
 };
 
 enum {
     SYS_WAITPID_WNOHANG = 1u,
     SYS_IO_NONBLOCK = 1u
+};
+
+enum {
+    SYS_POLLIN = 0x0001u,
+    SYS_POLLOUT = 0x0004u,
+    SYS_POLLERR = 0x0008u,
+    SYS_POLLNVAL = 0x0020u
 };
 
 typedef struct syscall_regs {

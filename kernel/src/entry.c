@@ -1,6 +1,7 @@
 #include "../include/kernel/console.h"
 #include "../include/kernel/console_fb.h"
 #include "../include/kernel/irq.h"
+#include "../include/kernel/init_task.h"
 #include "../include/kernel/kernel.h"
 #include "../include/kernel/printk.h"
 #include "../include/kernel/sched.h"
@@ -24,7 +25,7 @@ void kernel_entry(void) {
     kernel_early_init();
     console_fb_init();
     console_init();
-    KLOGI("kernel", "LAMP KERNEL V0.04 boot");
+    KLOGI("kernel", "LAMP KERNEL V0.05 boot");
     vm_info_log_boot();
     /* Kernel owns IVT policy after BIOS handoff. */
     trap_init();
@@ -38,6 +39,7 @@ void kernel_entry(void) {
     KLOGI("smp", "bsp online");
 
     sched_init();
+    init_task_spawn();
     kernel_late_init();
     KLOGI("sched", "start");
     sched_run();

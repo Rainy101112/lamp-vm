@@ -20,6 +20,7 @@ Establish a stable bring-up baseline before implementing policy:
 - `include/kernel/types.h`: private freestanding C11 integer/pointer type aliases
 - `include/kernel/kernel.h`: kernel boot sequence API
 - `include/kernel/console.h`: console ring-buffer and IO API
+- `include/kernel/init_task.h`: built-in init task bootstrap
 - `include/kernel/printk.h`: console print + leveled kernel log API
 - `include/kernel/trap.h`: trap/IRQ entry and dispatch API
 - `include/kernel/irq.h`: IRQ handlers API
@@ -30,6 +31,7 @@ Establish a stable bring-up baseline before implementing policy:
 - `include/kernel/spinlock.h`: lock primitive API
 - `src/entry.c`: `kernel_entry` and top-level init sequence
 - `src/console.c`: console core (`rx` ring buffer, wait queue, read/write path, no implicit rx echo)
+- `src/init_task.c`: kernel init task (`init$` command loop and runtime controls)
 - `src/trap.c`: trap dispatch skeleton
 - `src/irq.c`: IRQ handlers skeleton
 - `src/sched.c`: task scheduler core (single-core, cooperative step model)
@@ -63,7 +65,7 @@ Current limitations:
 
 - interrupt vector: `IRQ_SYSCALL = 0x80`
 - input registers at trap entry: `r0=nr`, `r1..r6=arg0..arg5`
-- initial syscalls: `getpid`, `yield`, `sleep_ticks`, `exit`, `waitpid`, `nanosleep`, `read`, `write`
+- initial syscalls: `getpid`, `yield`, `sleep_ticks`, `exit`, `waitpid`, `nanosleep`, `read`, `write`, `poll`, `select`, `tty_getmode`, `tty_setmode`
 - return publishing: fixed mailbox at `SYSCALL_ABI_ADDR (0x002FE000)`
 
 Note:
@@ -80,10 +82,12 @@ Note:
 
 ## Console Behavior (Current)
 
+- default tty local mode: `ECHO|ICANON|ISIG`
 - RX path normalizes `\r` to `\n`
 - RX path handles backspace/delete (`0x08`/`0x7F`) by deleting the latest unread non-newline byte
+- when `ISIG` is enabled, `^C` clears current input fragment and terminates line
 - RX path counts complete lines and exposes dropped-byte stats for diagnostics
-- input bytes are queued only (no implicit kernel echo)
+- input bytes are queued through tty line discipline (echo is controlled by tty mode bits)
 - serial IRQ handler drains all pending RX bytes in one interrupt
 
 ## Read/Write Semantics (Current)
@@ -93,6 +97,14 @@ Note:
   - blocks only for the first chunk when in blocking mode
   - once partial data is copied, subsequent chunks are polled nonblocking
 - nonblocking `read` returns `-1/EAGAIN` when no data is available
+
+## Poll/Select/TTY (Current)
+
+- `poll` ABI: `arg0=pollfd*`, `arg1=nfds`, `arg2=timeout_ms`
+- `select` ABI: `arg0=nfds`, `arg1=read_mask*`, `arg2=write_mask*`, `arg3=except_mask*`, `arg4=timeout_ms`
+- fd model (current): `0=stdin`, `1=stdout`, `2=stderr`
+- `tty_getmode(fd)` and `tty_setmode(fd, lflag)` expose tty local mode bits
+- blocking `poll/select` currently follow transition semantics: task is parked/slept then syscall returns `-1/EAGAIN`, caller retries
 
 ## Contract With BIOS
 

@@ -129,6 +129,18 @@ void console_fb_putc(uint32_t c) {
         newline();
         return;
     }
+    if (c == (uint32_t)'\b') {
+        if (g_cursor_x > 0) {
+            g_cursor_x--;
+        } else if (g_cursor_y > 0) {
+            g_cursor_y--;
+            g_cursor_x = COLS - 1;
+        } else {
+            return;
+        }
+        clear_cell(g_cursor_x, g_cursor_y);
+        return;
+    }
     if (c == (uint32_t)'\r') {
         g_cursor_x = 0;
         return;
