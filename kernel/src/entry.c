@@ -1,3 +1,4 @@
+#include "../include/kernel/console.h"
 #include "../include/kernel/console_fb.h"
 #include "../include/kernel/irq.h"
 #include "../include/kernel/kernel.h"
@@ -22,22 +23,23 @@ static void kernel_late_init(void) {
 void kernel_entry(void) {
     kernel_early_init();
     console_fb_init();
-    kprintf("LAMP KERNEL V0.03 IRQ+IO+LOG RX-LATCH\n");
+    console_init();
+    KLOGI("kernel", "LAMP KERNEL V0.04 boot");
     vm_info_log_boot();
     /* Kernel owns IVT policy after BIOS handoff. */
     trap_init();
     irq_input_init();
     syscall_init();
-    kprintf("TRAP: READY, INPUT IRQ ENABLED\n");
-    kprintf("SYSCALL: IRQ 0x80 DISPATCH READY\n");
+    KLOGI("trap", "ready, input irq enabled");
+    KLOGI("syscall", "irq 0x80 dispatch ready");
 
     /* Keep single-core path first, then expand to SMP. */
     smp_init_bsp();
-    kprintf("SMP: BSP ONLINE\n");
+    KLOGI("smp", "bsp online");
 
     sched_init();
     kernel_late_init();
-    kprintf("SCHED: START (TYPE TO ECHO)\n");
+    KLOGI("sched", "start");
     sched_run();
     for (;;) {
         __asm__ __volatile__("" ::: "memory");

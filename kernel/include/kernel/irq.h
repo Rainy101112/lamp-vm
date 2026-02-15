@@ -23,7 +23,6 @@ void irq_common_entry_from_stub(void);
 void irq_stub_entry(void);
 
 void irq_input_init(void);
-void irq_poll_input_echo(void);
 uint32_t irq_input_dropped(void);
 const trap_frame_t *irq_last_trap_frame(void);
 

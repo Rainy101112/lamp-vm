@@ -2,6 +2,8 @@
 #include "../include/kernel/printk.h"
 #include "../include/kernel/vm_info.h"
 
+#define VM_INFO_TAG "vm_info"
+
 static inline uint32_t vm_read32(uint32_t addr) {
     return *(volatile uint32_t *)(uintptr_t)addr;
 }
@@ -56,126 +58,123 @@ static void vm_info_print_vendor(const uint32_t vendor_words[4]) {
         }
     }
     if (!printed) {
-        kprintf("unknown");
+        kputs("unknown");
     }
 }
 
 static void vm_info_log_features(uint32_t features) {
+    if (!klog_should_emit(KLOG_LEVEL_INFO)) {
+        return;
+    }
     int first = 1;
-    kprintf("VMINFO: FEAT=");
+    klog_prefix(KLOG_LEVEL_INFO, VM_INFO_TAG);
+    kputs("features=");
     kprint_hex32(features);
-    kprintf(" [");
+    kputs(" [");
     if (features & BOOTINFO_FEATURE_TIME_MMIO) {
         if (!first) kputc((uint32_t)' ');
-        kprintf("TIME");
+        kputs("TIME");
         first = 0;
     }
     if (features & BOOTINFO_FEATURE_FB_MMIO) {
         if (!first) kputc((uint32_t)' ');
-        kprintf("FB");
+        kputs("FB");
         first = 0;
     }
     if (features & BOOTINFO_FEATURE_DISK_IO) {
         if (!first) kputc((uint32_t)' ');
-        kprintf("DISK");
+        kputs("DISK");
         first = 0;
     }
     if (features & BOOTINFO_FEATURE_SMP) {
         if (!first) kputc((uint32_t)' ');
-        kprintf("SMP");
+        kputs("SMP");
         first = 0;
     }
     if (features & BOOTINFO_FEATURE_TIMER_IRQ) {
         if (!first) kputc((uint32_t)' ');
-        kprintf("TIMER_IRQ");
+        kputs("TIMER_IRQ");
         first = 0;
     }
     if (first) {
-        kprintf("none");
+        kputs("none");
     }
-    kprintf("]\n");
+    kputs("]\n");
 }
 
 void vm_info_log_boot(void) {
     boot_info_t info;
     if (!vm_info_load_boot(&info)) {
-        kprintf("VMINFO: BOOTINFO MISSING\n");
+        KLOGW(VM_INFO_TAG, "bootinfo missing");
         return;
     }
 
-    kprintf("VMINFO: VENDOR=");
-    vm_info_print_vendor(info.vendor_words);
-    kprintf("\n");
-    kprintf(" MEM_LO=");
-    kprint_hex32(info.mem_bytes_lo);
-    kprintf("\n");
-    kprintf(" MEM_HI=");
-    kprint_hex32(info.mem_bytes_hi);
-    kprintf("\n");
-    kprintf(" DISK_LO=");
-    kprint_hex32(info.disk_bytes_lo);
-    kprintf("\n");
-    kprintf(" DISK_HI=");
-    kprint_hex32(info.disk_bytes_hi);
-    kprintf("\n");
-    kprintf(" SMP=");
-    kprint_hex32(info.smp_cores);
-    kprintf("\n");
+    if (klog_should_emit(KLOG_LEVEL_INFO)) {
+        klog_prefix(KLOG_LEVEL_INFO, VM_INFO_TAG);
+        kputs("vendor=");
+        vm_info_print_vendor(info.vendor_words);
+        kputs("\n");
 
-    kprintf("VMINFO: LAYOUT=");
-    kprint_hex32(info.layout_version);
-    kprintf("\n");
-    kprintf(" ARCH=");
-    kprint_hex32(info.arch_id);
-    kprintf("\n");
-    kprintf(" ENDIAN=");
-    kprint_hex32(info.endian);
-    kprintf("\n");
-    kprintf(" PADDR_BITS=");
-    kprint_hex32(info.phys_addr_bits);
-    kprintf("\n");
-    kprintf(" PAGE=");
-    kprint_hex32(info.page_size);
-    kprintf("\n");
-    kprintf(" TIMER_HZ=");
-    kprint_hex32(info.timer_freq_hz);
-    kprintf("\n");
-    kprintf("\n");
+        klog_prefix(KLOG_LEVEL_INFO, VM_INFO_TAG);
+        kputs("mem_lo=");
+        kprint_hex32(info.mem_bytes_lo);
+        kputs(" mem_hi=");
+        kprint_hex32(info.mem_bytes_hi);
+        kputs(" disk_lo=");
+        kprint_hex32(info.disk_bytes_lo);
+        kputs(" disk_hi=");
+        kprint_hex32(info.disk_bytes_hi);
+        kputs(" smp=");
+        kprint_hex32(info.smp_cores);
+        kputs("\n");
 
-    kprintf("VMINFO: FB_W=");
-    kprint_hex32(info.fb_width);
-    kprintf("\n");
-    kprintf(" FB_H=");
-    kprint_hex32(info.fb_height);
-    kprintf("\n");
-    kprintf(" FB_BPP=");
-    kprint_hex32(info.fb_bpp);
-    kprintf("\n");
-    kprintf(" FB_STRIDE=");
-    kprint_hex32(info.fb_stride_bytes);
-    kprintf("\n");
-    kprintf(" BOOT_RT_LO=");
-    kprint_hex32(info.boot_realtime_ns_lo);
-    kprintf("\n");
-    kprintf(" BOOT_RT_HI=");
-    kprint_hex32(info.boot_realtime_ns_hi);
-    kprintf("\n");
+        klog_prefix(KLOG_LEVEL_INFO, VM_INFO_TAG);
+        kputs("layout=");
+        kprint_hex32(info.layout_version);
+        kputs(" arch=");
+        kprint_hex32(info.arch_id);
+        kputs(" endian=");
+        kprint_hex32(info.endian);
+        kputs(" paddr_bits=");
+        kprint_hex32(info.phys_addr_bits);
+        kputs(" page=");
+        kprint_hex32(info.page_size);
+        kputs(" timer_hz=");
+        kprint_hex32(info.timer_freq_hz);
+        kputs("\n");
 
-    vm_info_log_features(info.features);
+        klog_prefix(KLOG_LEVEL_INFO, VM_INFO_TAG);
+        kputs("fb_w=");
+        kprint_hex32(info.fb_width);
+        kputs(" fb_h=");
+        kprint_hex32(info.fb_height);
+        kputs(" fb_bpp=");
+        kprint_hex32(info.fb_bpp);
+        kputs(" fb_stride=");
+        kprint_hex32(info.fb_stride_bytes);
+        kputs(" boot_rt_lo=");
+        kprint_hex32(info.boot_realtime_ns_lo);
+        kputs(" boot_rt_hi=");
+        kprint_hex32(info.boot_realtime_ns_hi);
+        kputs("\n");
+
+        vm_info_log_features(info.features);
+    }
 
     if (info.layout_version != SYSINFO_LAYOUT_VERSION) {
-        kprintf("VMINFO: WARN SYSINFO LAYOUT MISMATCH\n");
+        KLOGW(VM_INFO_TAG, "sysinfo layout mismatch");
     }
     if (info.arch_id != BOOTINFO_ARCH_LAMP32 || info.endian != BOOTINFO_ENDIAN_LITTLE) {
-        kprintf("VMINFO: WARN ARCH/ENDIAN MISMATCH\n");
+        KLOGW(VM_INFO_TAG, "arch/endian mismatch");
     }
     if (info.mem_bytes_hi != 0u || info.mem_bytes_lo != KERNEL_MEM_SIZE) {
-        kprintf("VMINFO: WARN MEM_SIZE CONTRACT MISMATCH EXPECT=");
+        klog_prefix(KLOG_LEVEL_WARN, VM_INFO_TAG);
+        kputs("mem_size contract mismatch expect=");
         kprint_hex32(KERNEL_MEM_SIZE);
-        kprintf(" GOT_LO=");
+        kputs(" got_lo=");
         kprint_hex32(info.mem_bytes_lo);
-        kprintf(" GOT_HI=");
+        kputs(" got_hi=");
         kprint_hex32(info.mem_bytes_hi);
-        kprintf("\n");
+        kputs("\n");
     }
 }

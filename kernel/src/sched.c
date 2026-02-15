@@ -1,4 +1,3 @@
-#include "../include/kernel/irq.h"
 #include "../include/kernel/platform.h"
 #include "../include/kernel/sched.h"
 
@@ -91,13 +90,6 @@ static void sched_idle_task(sched_task_t *task, void *arg) {
     (void)task;
     (void)arg;
     __asm__ __volatile__("" ::: "memory");
-}
-
-static void sched_input_task(sched_task_t *task, void *arg) {
-    (void)task;
-    (void)arg;
-    irq_poll_input_echo();
-    sched_yield();
 }
 
 static int sched_alloc_slot(void) {
@@ -271,7 +263,6 @@ void sched_init(void) {
     g_tasks[0].pub.run_ticks = 0u;
     g_tasks[0].pub.arg = 0;
 
-    (void)sched_spawn("input", sched_input_task, 0);
     timer_program_period_us(SCHED_TICK_PERIOD_US);
 }
 

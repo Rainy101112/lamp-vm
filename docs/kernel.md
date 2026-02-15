@@ -19,6 +19,8 @@ Establish a stable bring-up baseline before implementing policy:
 - `include/kernel/platform.h`: platform constants (interrupt numbers, memory constants)
 - `include/kernel/types.h`: private freestanding C11 integer/pointer type aliases
 - `include/kernel/kernel.h`: kernel boot sequence API
+- `include/kernel/console.h`: console ring-buffer and IO API
+- `include/kernel/printk.h`: console print + leveled kernel log API
 - `include/kernel/trap.h`: trap/IRQ entry and dispatch API
 - `include/kernel/irq.h`: IRQ handlers API
 - `include/kernel/sched.h`: scheduler API
@@ -27,6 +29,7 @@ Establish a stable bring-up baseline before implementing policy:
 - `include/kernel/vm_info.h`: BootInfo metadata from BIOS handoff
 - `include/kernel/spinlock.h`: lock primitive API
 - `src/entry.c`: `kernel_entry` and top-level init sequence
+- `src/console.c`: console core (`rx` ring buffer, wait queue, read/write path, no implicit rx echo)
 - `src/trap.c`: trap dispatch skeleton
 - `src/irq.c`: IRQ handlers skeleton
 - `src/sched.c`: task scheduler core (single-core, cooperative step model)
@@ -60,13 +63,36 @@ Current limitations:
 
 - interrupt vector: `IRQ_SYSCALL = 0x80`
 - input registers at trap entry: `r0=nr`, `r1..r6=arg0..arg5`
-- initial syscalls: `getpid`, `yield`, `sleep_ticks`, `exit`
+- initial syscalls: `getpid`, `yield`, `sleep_ticks`, `exit`, `waitpid`, `nanosleep`, `read`, `write`
 - return publishing: fixed mailbox at `SYSCALL_ABI_ADDR (0x002FE000)`
 
 Note:
 
 - VM currently restores caller registers on `IRET`, so direct register return is not yet available.
 - The dispatcher writes `ret/errno` and the last call snapshot into the syscall mailbox.
+
+## Logging (Current)
+
+- unified log prefix format: `[LVL][tag] message`
+- levels: `ERR`, `WRN`, `INF`, `DBG`
+- default level is controlled by `KERNEL_LOG_LEVEL_DEFAULT` in `include/kernel/platform.h`
+- panic path keeps forced error-level output and clears console with panic colors
+
+## Console Behavior (Current)
+
+- RX path normalizes `\r` to `\n`
+- RX path handles backspace/delete (`0x08`/`0x7F`) by deleting the latest unread non-newline byte
+- RX path counts complete lines and exposes dropped-byte stats for diagnostics
+- input bytes are queued only (no implicit kernel echo)
+- serial IRQ handler drains all pending RX bytes in one interrupt
+
+## Read/Write Semantics (Current)
+
+- `read(fd=0)` and `write(fd=1|2)` support larger user buffers via internal chunk loops
+- `read` preserves short-read behavior:
+  - blocks only for the first chunk when in blocking mode
+  - once partial data is copied, subsequent chunks are polled nonblocking
+- nonblocking `read` returns `-1/EAGAIN` when no data is available
 
 ## Contract With BIOS
 

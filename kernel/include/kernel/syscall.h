@@ -9,11 +9,14 @@ enum {
     SYS_SLEEP_TICKS = 2u,
     SYS_EXIT = 3u,
     SYS_WAITPID = 4u,
-    SYS_NANOSLEEP = 5u
+    SYS_NANOSLEEP = 5u,
+    SYS_READ = 6u,
+    SYS_WRITE = 7u
 };
 
 enum {
-    SYS_WAITPID_WNOHANG = 1u
+    SYS_WAITPID_WNOHANG = 1u,
+    SYS_IO_NONBLOCK = 1u
 };
 
 typedef struct syscall_regs {

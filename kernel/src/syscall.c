@@ -1,3 +1,4 @@
+#include "../include/kernel/console.h"
 #include "../include/kernel/platform.h"
 #include "../include/kernel/sched.h"
 #include "../include/kernel/syscall.h"
@@ -25,6 +26,7 @@ enum {
 enum {
     ERRNO_OK = 0u,
     ERRNO_EINTR = 4u,
+    ERRNO_EBADF = 9u,
     ERRNO_ECHILD = 10u,
     ERRNO_EAGAIN = 11u,
     ERRNO_EFAULT = 14u,
@@ -62,6 +64,34 @@ static inline uint32_t abi_user_write32(uint32_t addr, uint32_t v) {
         return 0u;
     }
     *(volatile uint32_t *)(uintptr_t)addr = v;
+    return 1u;
+}
+
+static inline uint32_t abi_user_write_bytes(uint32_t addr, const uint8_t *src, uint32_t len) {
+    uint32_t i;
+    if (!src || len == 0u) {
+        return 1u;
+    }
+    if (!abi_ptr_range_ok(addr, len)) {
+        return 0u;
+    }
+    for (i = 0u; i < len; i++) {
+        *(volatile uint8_t *)(uintptr_t)(addr + i) = src[i];
+    }
+    return 1u;
+}
+
+static inline uint32_t abi_user_read_bytes(uint32_t addr, uint8_t *dst, uint32_t len) {
+    uint32_t i;
+    if (!dst || len == 0u) {
+        return 1u;
+    }
+    if (!abi_ptr_range_ok(addr, len)) {
+        return 0u;
+    }
+    for (i = 0u; i < len; i++) {
+        dst[i] = *(volatile uint8_t *)(uintptr_t)(addr + i);
+    }
     return 1u;
 }
 
@@ -259,6 +289,112 @@ uint32_t syscall_dispatch(const syscall_regs_t *regs) {
             }
             sched_sleep_ticks(ticks);
             ret = 0u;
+            break;
+        }
+        case SYS_READ: {
+            uint32_t fd = regs->arg0;
+            uint32_t buf_addr = regs->arg1;
+            uint32_t len = regs->arg2;
+            uint32_t flags = regs->arg3;
+            uint8_t byte_buf[64];
+            uint32_t copied = 0u;
+            uint32_t nonblock = (flags & SYS_IO_NONBLOCK) ? 1u : 0u;
+
+            if (fd != 0u) {
+                err = ERRNO_EBADF;
+                ret = (uint32_t)-1;
+                break;
+            }
+            if (len == 0u) {
+                ret = 0u;
+                break;
+            }
+            if (buf_addr == 0u || !abi_ptr_range_ok(buf_addr, len)) {
+                err = ERRNO_EFAULT;
+                ret = (uint32_t)-1;
+                break;
+            }
+
+            while (copied < len) {
+                uint32_t remain = len - copied;
+                uint32_t want = (remain > (uint32_t)sizeof(byte_buf)) ? (uint32_t)sizeof(byte_buf) : remain;
+                /*
+                 * If some bytes are already copied, do not block for the next chunk.
+                 * This preserves short-read behavior instead of potentially sleeping.
+                 */
+                int n = console_read(byte_buf, want, (copied != 0u) ? 1u : nonblock);
+                if (n == CONSOLE_IO_BLOCKED) {
+                    if (copied == 0u) {
+                        err = ERRNO_EAGAIN;
+                        ret = (uint32_t)-1;
+                    } else {
+                        ret = copied;
+                    }
+                    break;
+                }
+                if (n == 0) {
+                    if (copied != 0u) {
+                        ret = copied;
+                    } else if (nonblock) {
+                        err = ERRNO_EAGAIN;
+                        ret = (uint32_t)-1;
+                    } else {
+                        ret = 0u;
+                    }
+                    break;
+                }
+                if (!abi_user_write_bytes(buf_addr + copied, byte_buf, (uint32_t)n)) {
+                    err = ERRNO_EFAULT;
+                    ret = (uint32_t)-1;
+                    break;
+                }
+                copied += (uint32_t)n;
+                ret = copied;
+                if ((uint32_t)n < want) {
+                    break;
+                }
+            }
+            break;
+        }
+        case SYS_WRITE: {
+            uint32_t fd = regs->arg0;
+            uint32_t buf_addr = regs->arg1;
+            uint32_t len = regs->arg2;
+            uint8_t byte_buf[128];
+            uint32_t total = 0u;
+
+            if (fd != 1u && fd != 2u) {
+                err = ERRNO_EBADF;
+                ret = (uint32_t)-1;
+                break;
+            }
+            if (len == 0u) {
+                ret = 0u;
+                break;
+            }
+            if (buf_addr == 0u || !abi_ptr_range_ok(buf_addr, len)) {
+                err = ERRNO_EFAULT;
+                ret = (uint32_t)-1;
+                break;
+            }
+
+            while (total < len) {
+                uint32_t remain = len - total;
+                uint32_t want = (remain > (uint32_t)sizeof(byte_buf)) ? (uint32_t)sizeof(byte_buf) : remain;
+                uint32_t written;
+
+                if (!abi_user_read_bytes(buf_addr + total, byte_buf, want)) {
+                    err = ERRNO_EFAULT;
+                    ret = (uint32_t)-1;
+                    break;
+                }
+                written = console_write(byte_buf, want);
+                total += written;
+                ret = total;
+                if (written < want) {
+                    break;
+                }
+            }
             break;
         }
         default:

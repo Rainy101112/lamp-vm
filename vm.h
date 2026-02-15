@@ -189,6 +189,9 @@ struct VM{
     vm_addr_t stack_pool_base;
     size_t stack_pool_size;
 
+    /*
+     * Timer shared datas.
+     */
     atomic_uint timer_period_us;
     atomic_uint_fast64_t timer_next_deadline_ns;
     atomic_bool timer_enabled;
