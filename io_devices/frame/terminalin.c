@@ -34,6 +34,9 @@ int get_key_nonblocking(void) {
 void vm_handle_keyboard(VM *vm) {
     int c = get_key_nonblocking();
     if (c != -1) {
+        if (c == '\r') {
+            c = '\n';
+        }
         (void)vm_serial_rx_enqueue(vm, (uint8_t)c);
     }
 }

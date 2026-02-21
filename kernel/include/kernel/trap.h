@@ -1,7 +1,7 @@
 #ifndef LAMP_KERNEL_TRAP_H
 #define LAMP_KERNEL_TRAP_H
 
-#include "kernel/types.h"
+#include "types.h"
 
 typedef void (*trap_handler_t)(uint32_t irq_no);
 

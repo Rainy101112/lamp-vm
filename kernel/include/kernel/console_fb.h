@@ -1,7 +1,7 @@
 #ifndef LAMP_KERNEL_CONSOLE_FB_H
 #define LAMP_KERNEL_CONSOLE_FB_H
 
-#include "kernel/types.h"
+#include "types.h"
 
 void console_fb_init(void);
 void console_fb_putc(uint32_t c);

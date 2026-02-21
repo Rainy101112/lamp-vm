@@ -1,7 +1,7 @@
 #ifndef LAMP_KERNEL_CONSOLE_H
 #define LAMP_KERNEL_CONSOLE_H
 
-#include "kernel/types.h"
+#include "types.h"
 
 enum {
     CONSOLE_IO_OK = 0,

@@ -130,6 +130,7 @@ struct VCPU {
     int csp;
     int isp;
     int in_interrupt;
+    int irq_masked;
     int core_id;
     vm_addr_t call_stack_base;
     vm_addr_t data_stack_base;

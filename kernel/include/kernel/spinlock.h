@@ -1,7 +1,7 @@
 #ifndef LAMP_KERNEL_SPINLOCK_H
 #define LAMP_KERNEL_SPINLOCK_H
 
-#include "kernel/types.h"
+#include "types.h"
 
 typedef struct {
     volatile uint32_t v;

@@ -288,6 +288,18 @@ void vm_instruction_case(VM *vm) {
         case OP_IN: {
             const int addr = cpu->regs[rs1];
             if (addr >= 0 && addr < IO_SIZE) {
+                if (addr == CPU_CTX_CSP) {
+                    cpu->regs[rd] = cpu->csp;
+                    break;
+                }
+                if (addr == CPU_CTX_DSP) {
+                    cpu->regs[rd] = cpu->dsp;
+                    break;
+                }
+                if (addr == CPU_CTX_IRQ_MASK) {
+                    cpu->regs[rd] = cpu->irq_masked ? 1 : 0;
+                    break;
+                }
                 vm_shared_lock(vm);
                 if (addr == KEYBOARD) {
                     int v = 0;
@@ -332,6 +344,24 @@ void vm_instruction_case(VM *vm) {
         case OP_OUT: {
             const int addr = cpu->regs[rs1];
             if (addr >= 0 && addr < IO_SIZE) {
+                if (addr == CPU_CTX_CSP) {
+                    const int v = cpu->regs[rd];
+                    if (v >= 0 && v <= CALL_STACK_SIZE) {
+                        cpu->csp = v;
+                    }
+                    break;
+                }
+                if (addr == CPU_CTX_DSP) {
+                    const int v = cpu->regs[rd];
+                    if (v >= 0 && v <= DATA_STACK_SIZE) {
+                        cpu->dsp = v;
+                    }
+                    break;
+                }
+                if (addr == CPU_CTX_IRQ_MASK) {
+                    cpu->irq_masked = (cpu->regs[rd] != 0);
+                    break;
+                }
                 accept_io(vm, addr, cpu->regs[rd]);
             } else {
                 panic(panic_format("OUT invalid IO address %d\n", addr), vm);
@@ -863,6 +893,12 @@ void vm_dump(const VM *vm, int mem_preview) {
         return;
     printf("VM dump:\n");
     printf("Core: 0\n");
+    printf("CPU state: csp=%d dsp=%d isp=%d in_interrupt=%d irq_masked=%d\n",
+           cpu->csp,
+           cpu->dsp,
+           cpu->isp,
+           cpu->in_interrupt,
+           cpu->irq_masked);
     printf("Registers:\n");
     for (int i = 0; i < REG_COUNT; i++) {
         printf("r%d = %d\n", i, cpu->regs[i]);
@@ -1091,6 +1127,7 @@ VM *vm_create(size_t memory_size,
         vm->cpus[i].csp = CALL_STACK_SIZE;
         vm->cpus[i].dsp = DATA_STACK_SIZE;
         vm->cpus[i].isp = ISR_STACK_SIZE;
+        vm->cpus[i].irq_masked = 0;
         atomic_init(&vm->core_released[i], (i == 0));
     }
 
@@ -1270,14 +1307,53 @@ static int run_selftest_relctrl(void) {
     return ok;
 }
 
+static int run_selftest_zero_branch_flags(void) {
+    const vm_addr_t flag_addr = 0x3024;
+    const vm_addr_t fail_addr = PROGRAM_BASE + 16 * 8;
+    uint64_t program[] = {
+        INST(OP_MOVI, 10, 0, 0, flag_addr),  /* r10 = flag addr */
+        INST(OP_MOVI, 11, 0, 0, 0),          /* *flag = 0 */
+        INST(OP_STORE32, 11, 10, 0, 0),
+        INST(OP_MOVI, 2, 0, 0, 123),         /* non-zero rs (must be ignored) */
+        INST(OP_MOVI, 1, 0, 0, 7),
+        INST(OP_CMPI, 1, 0, 0, 7),           /* ZF = 1 */
+        INST(OP_RJZ, 2, 0, 0, 16),           /* go to idx 8 */
+        INST(OP_JMP, 0, 0, 0, fail_addr),
+        INST(OP_MOVI, 2, 0, 0, 0),           /* zero rs (must be ignored) */
+        INST(OP_MOVI, 1, 0, 0, 7),
+        INST(OP_CMPI, 1, 0, 0, 8),           /* ZF = 0 */
+        INST(OP_RJNZ, 2, 0, 0, 16),          /* go to idx 13 */
+        INST(OP_JMP, 0, 0, 0, fail_addr),
+        INST(OP_MOVI, 11, 0, 0, 1),          /* pass: *flag = 1 */
+        INST(OP_STORE32, 11, 10, 0, 0),
+        INST(OP_HALT, 0, 0, 0, 0),
+        INST(OP_MOVI, 11, 0, 0, 2),          /* fail: *flag = 2 */
+        INST(OP_STORE32, 11, 10, 0, 0),
+        INST(OP_HALT, 0, 0, 0, 0),
+    };
+
+    VM *vm = vm_create(MEM_SIZE, program, sizeof(program) / sizeof(program[0]), NULL, 0, NULL, 1);
+    if (!vm)
+        return 0;
+    disk_init(vm, "./disk.img");
+    init_ivt(vm);
+    int ok = vm_run_headless(vm, 1000);
+    uint32_t flag = vm_read32(vm, flag_addr);
+    ok = ok && (flag == 1);
+    vm_destroy(vm);
+    return ok;
+}
+
 static int run_selftests(void) {
     int ok1 = run_selftest_startap_cpuid();
     int ok2 = run_selftest_ipi();
     int ok3 = run_selftest_relctrl();
+    int ok4 = run_selftest_zero_branch_flags();
     printf("[selftest] startap_cpuid: %s\n", ok1 ? "PASS" : "FAIL");
     printf("[selftest] ipi: %s\n", ok2 ? "PASS" : "FAIL");
     printf("[selftest] relctrl: %s\n", ok3 ? "PASS" : "FAIL");
-    return (ok1 && ok2 && ok3) ? 0 : 1;
+    printf("[selftest] zero_branch_flags: %s\n", ok4 ? "PASS" : "FAIL");
+    return (ok1 && ok2 && ok3 && ok4) ? 0 : 1;
 }
 
 int main(int argc, char **argv) {

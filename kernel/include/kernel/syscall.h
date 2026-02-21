@@ -1,7 +1,7 @@
 #ifndef LAMP_KERNEL_SYSCALL_H
 #define LAMP_KERNEL_SYSCALL_H
 
-#include "kernel/types.h"
+#include "types.h"
 
 enum {
     SYS_GETPID = 0u,
@@ -19,12 +19,16 @@ enum {
     SYS_CLOCK_GETTIME = 12u,
     SYS_GETTIMEOFDAY = 13u,
     SYS_CLOCK_GETRES = 14u,
-    SYS_CLOCK_SETTIME = 15u
+    SYS_CLOCK_SETTIME = 15u,
+    SYS_CLOSE = 16u,
+    SYS_DUP = 17u,
+    SYS_DUP2 = 18u,
+    SYS_FCNTL = 19u
 };
 
 enum {
     SYS_WAITPID_WNOHANG = 1u,
-    SYS_IO_NONBLOCK = 1u
+    SYS_IO_NONBLOCK = 1u /* deprecated: use fcntl(F_SETFL, O_NONBLOCK) */
 };
 
 enum {
@@ -40,6 +44,25 @@ enum {
     SYS_CLOCK_BOOTTIME = 7u
 };
 
+enum {
+    SYS_FCNTL_F_GETFD = 1u,
+    SYS_FCNTL_F_SETFD = 2u,
+    SYS_FCNTL_F_GETFL = 3u,
+    SYS_FCNTL_F_SETFL = 4u
+};
+
+enum {
+    SYS_O_ACCMODE = 0x00000003u,
+    SYS_O_RDONLY = 0x00000000u,
+    SYS_O_WRONLY = 0x00000001u,
+    SYS_O_RDWR = 0x00000002u,
+    SYS_O_NONBLOCK = 0x00000800u
+};
+
+enum {
+    SYS_FD_CLOEXEC = 0x00000001u
+};
+
 typedef struct syscall_regs {
     uint32_t nr;
     uint32_t arg0;
@@ -52,12 +75,5 @@ typedef struct syscall_regs {
 
 void syscall_init(void);
 uint32_t syscall_dispatch(const syscall_regs_t *regs);
-void syscall_dispatch_from_irq_regs(uint32_t r0,
-                                    uint32_t r1,
-                                    uint32_t r2,
-                                    uint32_t r3,
-                                    uint32_t r4,
-                                    uint32_t r5,
-                                    uint32_t r6);
 
 #endif

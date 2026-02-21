@@ -1,7 +1,7 @@
 #ifndef LAMP_KERNEL_VM_INFO_H
 #define LAMP_KERNEL_VM_INFO_H
 
-#include "kernel/types.h"
+#include "types.h"
 
 typedef struct {
     uint32_t magic;

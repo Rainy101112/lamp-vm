@@ -99,16 +99,22 @@ void irq_timer(uint32_t irq_no) {
 }
 
 void irq_syscall(uint32_t irq_no) {
+    syscall_regs_t regs;
     if (irq_no < KERNEL_IVT_SIZE) {
         g_irq_counts[irq_no]++;
     }
-    syscall_dispatch_from_irq_regs(g_irq_stub_r0,
-                                   g_irq_stub_r1,
-                                   g_irq_stub_r2,
-                                   g_irq_stub_r3,
-                                   g_irq_stub_r4,
-                                   g_irq_stub_r5,
-                                   g_irq_stub_r6);
+    /*
+     * Keep IRQ syscall entry on a pointer-based call path.
+     * This avoids relying on wide C argument passing in the current backend.
+     */
+    regs.nr = g_irq_stub_r0;
+    regs.arg0 = g_irq_stub_r1;
+    regs.arg1 = g_irq_stub_r2;
+    regs.arg2 = g_irq_stub_r3;
+    regs.arg3 = g_irq_stub_r4;
+    regs.arg4 = g_irq_stub_r5;
+    regs.arg5 = g_irq_stub_r6;
+    (void)syscall_dispatch(&regs);
 }
 
 __asm__(

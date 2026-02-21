@@ -125,8 +125,19 @@ void console_fb_clear(void) {
 }
 
 void console_fb_putc(uint32_t c) {
+    if (c == (uint32_t)'\a') {
+        return;
+    }
     if (c == (uint32_t)'\n') {
         newline();
+        return;
+    }
+    if (c == (uint32_t)'\v') {
+        newline();
+        return;
+    }
+    if (c == (uint32_t)'\f') {
+        console_fb_clear();
         return;
     }
     if (c == (uint32_t)'\b') {

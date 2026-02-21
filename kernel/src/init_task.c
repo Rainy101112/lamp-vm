@@ -1,5 +1,6 @@
 #include "../include/kernel/console.h"
 #include "../include/kernel/console_fb.h"
+#include "../include/kernel/fd_selftest.h"
 #include "../include/kernel/init_task.h"
 #include "../include/kernel/printk.h"
 #include "../include/kernel/sched.h"
@@ -135,6 +136,7 @@ static void init_handle_cmd(char *line) {
         init_puts("  log <err|warn|info|debug>\n");
         init_puts("  poll\n");
         init_puts("  clear\n");
+        init_puts("  fdtest\n");
         return;
     }
     if (init_streq(line, "tty")) {
@@ -147,6 +149,10 @@ static void init_handle_cmd(char *line) {
     }
     if (init_streq(line, "clear")) {
         console_fb_clear();
+        return;
+    }
+    if (init_streq(line, "fdtest")) {
+        fd_selftest_run();
         return;
     }
     if (init_starts_with(line, "log ")) {
@@ -209,6 +215,10 @@ static void init_task_entry(sched_task_t *task, void *arg) {
         st->len = 0u;
         init_prompt();
         return;
+    }
+
+    if (c == (uint8_t)'\t' || c == (uint8_t)'\v' || c == (uint8_t)'\f') {
+        c = (uint8_t)' ';
     }
 
     if (c >= (uint8_t)' ' && c <= (uint8_t)'~') {

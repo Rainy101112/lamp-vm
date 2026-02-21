@@ -1,7 +1,7 @@
 #ifndef LAMP_KERNEL_IRQ_H
 #define LAMP_KERNEL_IRQ_H
 
-#include "kernel/types.h"
+#include "types.h"
 
 typedef struct trap_frame {
     uint32_t irq_no;

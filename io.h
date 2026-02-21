@@ -15,6 +15,9 @@ enum IO_TABLE {
     DISK_MEM = 0x12,
     DISK_COUNT = 0x13,
     DISK_STATUS = 0x14,
+    CPU_CTX_CSP = 0xF0,
+    CPU_CTX_DSP = 0xF1,
+    CPU_CTX_IRQ_MASK = 0xF2,
 };
 
 // SCREEN / SCREEN_ATTRIBUTE / KEYBOARD are repurposed as a basic serial device:

@@ -79,6 +79,8 @@ void vm_handle_interrupts(VM *vm) {
         return;
     if (cpu->in_interrupt)
         return;
+    if (cpu->irq_masked)
+        return;
 
     const int core_id = cpu->core_id;
     const size_t base = (size_t)core_id * (size_t)IRQ_BITMAP_WORDS;

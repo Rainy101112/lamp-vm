@@ -34,7 +34,7 @@ Establish a stable bring-up baseline before implementing policy:
 - `src/init_task.c`: kernel init task (`init$` command loop and runtime controls)
 - `src/trap.c`: trap dispatch skeleton
 - `src/irq.c`: IRQ handlers skeleton
-- `src/sched.c`: task scheduler core (single-core, cooperative step model)
+- `src/sched.c`: task scheduler core (single-core, full task-context switch)
 - `src/syscall.c`: syscall dispatcher and ABI mailbox publish
 - `src/smp.c`: SMP bootstrap skeleton
 - `src/vm_info.c`: BootInfo decode/log helper
@@ -49,23 +49,23 @@ Establish a stable bring-up baseline before implementing policy:
 
 ## Scheduler Status
 
-Current `sched` is intentionally a transition design for POSIX bring-up:
+Current `sched` supports full per-task context switching for POSIX-style blocking:
 
 - fixed task table (`SCHED_MAX_TASKS`)
 - round-robin runnable selection with tick quantum
 - task states: `RUNNABLE/RUNNING/SLEEPING/BLOCKED/ZOMBIE`
 - blocking primitives: `sched_sleep_ticks()` and wait-queue wakeup
 
-Current limitations:
+Current notes:
 
-- execution model is cooperative "task step" callbacks, not full register-context switch yet
-- this is enough to validate timeout/blocking semantics and syscall-facing scheduler APIs before low-level context-switch code lands
+- task switch saves/restores task-local runtime context (`r31` stack pointer + VM call/data stack state)
+- blocking syscalls (`waitpid/poll/select` paths) can park the current task and resume at the original call site
 
 ## Syscall ABI (Current)
 
 - interrupt vector: `IRQ_SYSCALL = 0x80`
 - input registers at trap entry: `r0=nr`, `r1..r6=arg0..arg5`
-- initial syscalls: `getpid`, `yield`, `sleep_ticks`, `exit`, `waitpid`, `nanosleep`, `read`, `write`, `poll`, `select`, `tty_getmode`, `tty_setmode`, `clock_getres`, `clock_gettime`, `clock_settime`, `gettimeofday`
+- initial syscalls: `getpid`, `yield`, `sleep_ticks`, `exit`, `waitpid`, `nanosleep`, `read`, `write`, `close`, `dup`, `dup2`, `fcntl`, `poll`, `select`, `tty_getmode`, `tty_setmode`, `clock_getres`, `clock_gettime`, `clock_settime`, `gettimeofday`
 - return publishing: fixed mailbox at `SYSCALL_ABI_ADDR (0x002FE000)`
 
 Note:
@@ -96,6 +96,7 @@ Note:
 - `read` preserves short-read behavior:
   - blocks only for the first chunk when in blocking mode
   - once partial data is copied, subsequent chunks are polled nonblocking
+- nonblocking mode is now driven by fd status flags (`fcntl(F_SETFL, O_NONBLOCK)`)
 - nonblocking `read` returns `-1/EAGAIN` when no data is available
 
 ## Poll/Select/TTY (Current)
@@ -104,11 +105,16 @@ Note:
 - `select` ABI: `arg0=nfds`, `arg1=read_mask*`, `arg2=write_mask*`, `arg3=except_mask*`, `arg4=timeout_ms`
 - fd model (current): `0=stdin`, `1=stdout`, `2=stderr`
 - `tty_getmode(fd)` and `tty_setmode(fd, lflag)` expose tty local mode bits
+- `close/dup/dup2` and `fcntl(F_GETFD/F_SETFD/F_GETFL/F_SETFL)` are wired to per-task fd tables
+- `fdtest` command in init shell runs fd regression checks (`dup`, `fcntl`, `read/poll/select`)
+- `fdtest` uses `waitpid(child_pid, WNOHANG)` for post-reap `ECHILD` assertion to avoid ambient-child interference
+- `poll` follows POSIX rule for ignored entries: `pollfd.fd < 0` yields `revents=0` and does not count as ready
+- `waitpid(pid=0, ...)` is accepted and currently mapped to "any child" (process groups are not modeled yet)
+- blocking `waitpid/poll/select` now park the current task and return only when ready/child-exit/timeout
 - `clock_getres(clock_id, res*)` returns implementation resolution (`1ns`), `res==NULL` is allowed
 - `clock_gettime(clock_id, ts*)` supports `CLOCK_REALTIME(0)`, `CLOCK_MONOTONIC(1)`, and boot time (`2`/`7`)
 - `clock_settime(clock_id, ts*)` currently allows `CLOCK_REALTIME(0)` only; `CLOCK_MONOTONIC(1)` returns `EINVAL`
 - `gettimeofday(tv*, tz*)` returns realtime and writes zeroed legacy timezone data when `tz` is non-null
-- blocking `poll/select` currently follow transition semantics: task is parked/slept then syscall returns `-1/EAGAIN`, caller retries
 
 ## Contract With BIOS
 

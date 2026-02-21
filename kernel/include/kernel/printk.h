@@ -1,7 +1,7 @@
 #ifndef LAMP_KERNEL_PRINTK_H
 #define LAMP_KERNEL_PRINTK_H
 
-#include "kernel/types.h"
+#include "types.h"
 
 enum {
     KLOG_LEVEL_ERROR = 1u,

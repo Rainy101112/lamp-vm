@@ -30,6 +30,7 @@ enum {
     ERRNO_ECHILD = 10u,
     ERRNO_EAGAIN = 11u,
     ERRNO_EFAULT = 14u,
+    ERRNO_EMFILE = 24u,
     ERRNO_EINVAL = 22u,
     ERRNO_ENOSYS = 38u,
     ERRNO_EOVERFLOW = 75u
@@ -173,15 +174,46 @@ static inline uint32_t count_bits_u32(uint32_t v) {
 }
 
 static inline uint32_t fd_is_valid(int32_t fd) {
-    return (fd == 0 || fd == 1 || fd == 2) ? 1u : 0u;
+    return sched_fd_is_open(fd);
 }
 
-static inline uint32_t fd_can_read(int32_t fd) {
-    return (fd == 0) ? console_can_read() : 0u;
+static inline uint32_t fd_supports_read(int32_t fd) {
+    return sched_fd_can_read(fd);
 }
 
-static inline uint32_t fd_can_write(int32_t fd) {
-    return (fd == 1 || fd == 2) ? 1u : 0u;
+static inline uint32_t fd_supports_write(int32_t fd) {
+    return sched_fd_can_write(fd);
+}
+
+static inline uint32_t fd_is_nonblock(int32_t fd) {
+    return sched_fd_is_nonblock(fd);
+}
+
+static inline uint32_t fd_read_ready(int32_t fd) {
+    if (!fd_supports_read(fd)) {
+        return 0u;
+    }
+    if (sched_fd_is_stdin(fd)) {
+        return console_can_read();
+    }
+    return 0u;
+}
+
+static inline uint32_t fd_write_ready(int32_t fd) {
+    return fd_supports_write(fd);
+}
+
+static uint32_t errno_from_sched_fd_rc(int rc) {
+    if (rc == SCHED_FD_EBADF) {
+        return ERRNO_EBADF;
+    }
+    if (rc == SCHED_FD_EMFILE) {
+        return ERRNO_EMFILE;
+    }
+    if (rc == SCHED_FD_EINVAL) {
+        return ERRNO_EINVAL;
+    }
+    return ERRNO_EINVAL;
 }
 
 static inline uint64_t mmio_read_time_ns(uint32_t low_addr, uint32_t high_addr) {
@@ -297,20 +329,22 @@ static uint32_t timeout_ms_to_ticks(int32_t timeout_ms) {
     return div_ceil_u32(timeout_us, tick_us);
 }
 
-static inline void syscall_publish_result(const syscall_regs_t *regs, uint32_t ret, uint32_t err) {
-    abi_write32(SYSCALL_ABI_OFF_MAGIC, SYSCALL_ABI_MAGIC);
-    abi_write32(SYSCALL_ABI_OFF_VERSION, SYSCALL_ABI_VERSION);
-    abi_write32(SYSCALL_ABI_OFF_LAST_NR, regs ? regs->nr : 0u);
-    abi_write32(SYSCALL_ABI_OFF_ARG0, regs ? regs->arg0 : 0u);
-    abi_write32(SYSCALL_ABI_OFF_ARG1, regs ? regs->arg1 : 0u);
-    abi_write32(SYSCALL_ABI_OFF_ARG2, regs ? regs->arg2 : 0u);
-    abi_write32(SYSCALL_ABI_OFF_ARG3, regs ? regs->arg3 : 0u);
-    abi_write32(SYSCALL_ABI_OFF_ARG4, regs ? regs->arg4 : 0u);
-    abi_write32(SYSCALL_ABI_OFF_ARG5, regs ? regs->arg5 : 0u);
-    abi_write32(SYSCALL_ABI_OFF_RET, ret);
-    abi_write32(SYSCALL_ABI_OFF_ERRNO, err);
-    abi_write32(SYSCALL_ABI_OFF_TICK, sched_ticks());
-}
+#define SYSCALL_PUBLISH_RESULT(regs_, ret_, err_)                                \
+    do {                                                                         \
+        const syscall_regs_t *const __regs = (regs_);                           \
+        abi_write32(SYSCALL_ABI_OFF_MAGIC, SYSCALL_ABI_MAGIC);                  \
+        abi_write32(SYSCALL_ABI_OFF_VERSION, SYSCALL_ABI_VERSION);              \
+        abi_write32(SYSCALL_ABI_OFF_LAST_NR, __regs ? __regs->nr : 0u);         \
+        abi_write32(SYSCALL_ABI_OFF_ARG0, __regs ? __regs->arg0 : 0u);          \
+        abi_write32(SYSCALL_ABI_OFF_ARG1, __regs ? __regs->arg1 : 0u);          \
+        abi_write32(SYSCALL_ABI_OFF_ARG2, __regs ? __regs->arg2 : 0u);          \
+        abi_write32(SYSCALL_ABI_OFF_ARG3, __regs ? __regs->arg3 : 0u);          \
+        abi_write32(SYSCALL_ABI_OFF_ARG4, __regs ? __regs->arg4 : 0u);          \
+        abi_write32(SYSCALL_ABI_OFF_ARG5, __regs ? __regs->arg5 : 0u);          \
+        abi_write32(SYSCALL_ABI_OFF_RET, (ret_));                               \
+        abi_write32(SYSCALL_ABI_OFF_ERRNO, (err_));                             \
+        abi_write32(SYSCALL_ABI_OFF_TICK, sched_ticks());                       \
+    } while (0)
 
 void syscall_init(void) {
     g_realtime_offset_neg = 0u;
@@ -333,7 +367,7 @@ uint32_t syscall_dispatch(const syscall_regs_t *regs) {
     uint32_t ret = 0u;
     uint32_t err = ERRNO_OK;
     if (!regs) {
-        syscall_publish_result(0, (uint32_t)-1, ERRNO_ENOSYS);
+        SYSCALL_PUBLISH_RESULT(0, (uint32_t)-1, ERRNO_ENOSYS);
         return (uint32_t)-1;
     }
 
@@ -360,7 +394,14 @@ uint32_t syscall_dispatch(const syscall_regs_t *regs) {
             uint32_t status = 0u;
             int rc;
 
-            if (pid == 0 || pid < SCHED_WAITPID_ANY) {
+            /*
+             * POSIX waitpid(pid=0): wait any child in caller's process group.
+             * Current scheduler has no process groups; map pid=0 to "any child".
+             */
+            if (pid == 0) {
+                pid = SCHED_WAITPID_ANY;
+            }
+            if (pid < SCHED_WAITPID_ANY) {
                 err = ERRNO_EINVAL;
                 ret = (uint32_t)-1;
                 break;
@@ -371,38 +412,34 @@ uint32_t syscall_dispatch(const syscall_regs_t *regs) {
                 break;
             }
 
-            rc = sched_waitpid(pid,
-                               (options & SYS_WAITPID_WNOHANG) ? SCHED_WAITPID_WNOHANG : 0u,
-                               &status);
-            if (rc > 0) {
-                if (status_addr != 0u && !abi_user_write32(status_addr, status)) {
-                    err = ERRNO_EFAULT;
+            for (;;) {
+                rc = sched_waitpid(pid, (options & SYS_WAITPID_WNOHANG) ? SCHED_WAITPID_WNOHANG : 0u, &status);
+                if (rc > 0) {
+                    if (status_addr != 0u && !abi_user_write32(status_addr, status)) {
+                        err = ERRNO_EFAULT;
+                        ret = (uint32_t)-1;
+                        break;
+                    }
+                    ret = (uint32_t)rc;
+                    break;
+                }
+                if (rc == 0) {
+                    ret = 0u;
+                    break;
+                }
+                if (rc == SCHED_WAITPID_BLOCKED) {
+                    /* blocking path parks task and resumes here on wakeup */
+                    continue;
+                }
+                if (rc == SCHED_WAITPID_NO_CHILD) {
+                    err = ERRNO_ECHILD;
                     ret = (uint32_t)-1;
                     break;
                 }
-                ret = (uint32_t)rc;
-                break;
-            }
-            if (rc == 0) {
-                ret = 0u;
-                break;
-            }
-            if (rc == SCHED_WAITPID_NO_CHILD) {
                 err = ERRNO_ECHILD;
                 ret = (uint32_t)-1;
                 break;
             }
-            if (rc == SCHED_WAITPID_BLOCKED) {
-                /*
-                 * Transitional behavior:
-                 * caller is parked on child wait-queue; runtime should retry syscall.
-                 */
-                err = ERRNO_EAGAIN;
-                ret = (uint32_t)-1;
-                break;
-            }
-            err = ERRNO_ECHILD;
-            ret = (uint32_t)-1;
             break;
         }
         case SYS_NANOSLEEP: {
@@ -468,15 +505,15 @@ uint32_t syscall_dispatch(const syscall_regs_t *regs) {
             break;
         }
         case SYS_READ: {
-            uint32_t fd = regs->arg0;
+            int32_t fd = (int32_t)regs->arg0;
             uint32_t buf_addr = regs->arg1;
             uint32_t len = regs->arg2;
             uint32_t flags = regs->arg3;
             uint8_t byte_buf[64];
             uint32_t copied = 0u;
-            uint32_t nonblock = (flags & SYS_IO_NONBLOCK) ? 1u : 0u;
+            uint32_t nonblock = fd_is_nonblock(fd) | ((flags & SYS_IO_NONBLOCK) ? 1u : 0u);
 
-            if (fd != 0u) {
+            if (!fd_supports_read(fd)) {
                 err = ERRNO_EBADF;
                 ret = (uint32_t)-1;
                 break;
@@ -533,13 +570,13 @@ uint32_t syscall_dispatch(const syscall_regs_t *regs) {
             break;
         }
         case SYS_WRITE: {
-            uint32_t fd = regs->arg0;
+            int32_t fd = (int32_t)regs->arg0;
             uint32_t buf_addr = regs->arg1;
             uint32_t len = regs->arg2;
             uint8_t byte_buf[128];
             uint32_t total = 0u;
 
-            if (fd != 1u && fd != 2u) {
+            if (!fd_supports_write(fd)) {
                 err = ERRNO_EBADF;
                 ret = (uint32_t)-1;
                 break;
@@ -573,22 +610,115 @@ uint32_t syscall_dispatch(const syscall_regs_t *regs) {
             }
             break;
         }
+        case SYS_CLOSE: {
+            int rc = sched_fd_close((int32_t)regs->arg0);
+            if (rc != SCHED_FD_OK) {
+                err = errno_from_sched_fd_rc(rc);
+                ret = (uint32_t)-1;
+                break;
+            }
+            ret = 0u;
+            break;
+        }
+        case SYS_DUP: {
+            int rc = sched_fd_dup((int32_t)regs->arg0);
+            if (rc < 0) {
+                err = errno_from_sched_fd_rc(rc);
+                ret = (uint32_t)-1;
+                break;
+            }
+            ret = (uint32_t)rc;
+            break;
+        }
+        case SYS_DUP2: {
+            int rc = sched_fd_dup2((int32_t)regs->arg0, (int32_t)regs->arg1);
+            if (rc < 0) {
+                err = errno_from_sched_fd_rc(rc);
+                ret = (uint32_t)-1;
+                break;
+            }
+            ret = (uint32_t)rc;
+            break;
+        }
+        case SYS_FCNTL: {
+            int32_t fd = (int32_t)regs->arg0;
+            uint32_t cmd = regs->arg1;
+            uint32_t arg = regs->arg2;
+            int rc;
+            switch (cmd) {
+                case SYS_FCNTL_F_GETFD: {
+                    uint32_t flags = 0u;
+                    rc = sched_fd_fcntl_getfd(fd, &flags);
+                    if (rc != SCHED_FD_OK) {
+                        err = errno_from_sched_fd_rc(rc);
+                        ret = (uint32_t)-1;
+                        break;
+                    }
+                    ret = flags;
+                    break;
+                }
+                case SYS_FCNTL_F_SETFD:
+                    rc = sched_fd_fcntl_setfd(fd, arg);
+                    if (rc != SCHED_FD_OK) {
+                        err = errno_from_sched_fd_rc(rc);
+                        ret = (uint32_t)-1;
+                        break;
+                    }
+                    ret = 0u;
+                    break;
+                case SYS_FCNTL_F_GETFL: {
+                    uint32_t flags = 0u;
+                    rc = sched_fd_fcntl_getfl(fd, &flags);
+                    if (rc != SCHED_FD_OK) {
+                        err = errno_from_sched_fd_rc(rc);
+                        ret = (uint32_t)-1;
+                        break;
+                    }
+                    ret = flags;
+                    break;
+                }
+                case SYS_FCNTL_F_SETFL:
+                    rc = sched_fd_fcntl_setfl(fd, arg);
+                    if (rc != SCHED_FD_OK) {
+                        err = errno_from_sched_fd_rc(rc);
+                        ret = (uint32_t)-1;
+                        break;
+                    }
+                    ret = 0u;
+                    break;
+                default:
+                    err = ERRNO_EINVAL;
+                    ret = (uint32_t)-1;
+                    break;
+            }
+            break;
+        }
         case SYS_POLL: {
             uint32_t fds_addr = regs->arg0;
             uint32_t nfds = regs->arg1;
             int32_t timeout_ms = (int32_t)regs->arg2;
-            uint32_t ready = 0u;
-            uint32_t wait_read_stdin = 0u;
             uint32_t timeout_ticks = timeout_ms_to_ticks(timeout_ms);
+            uint32_t start_tick = sched_ticks();
             uint32_t i;
 
             if (nfds == 0u) {
-                if (timeout_ms > 0) {
-                    sched_sleep_ticks(timeout_ticks ? timeout_ticks : 1u);
-                    err = ERRNO_EAGAIN;
-                    ret = (uint32_t)-1;
-                } else {
+                if (timeout_ms == 0) {
                     ret = 0u;
+                    break;
+                }
+                for (;;) {
+                    if (timeout_ms > 0) {
+                        uint32_t elapsed = sched_ticks() - start_tick;
+                        uint32_t remaining = (elapsed >= timeout_ticks) ? 0u : (timeout_ticks - elapsed);
+                        if (remaining == 0u) {
+                            ret = 0u;
+                            break;
+                        }
+                        sched_sleep_ticks(remaining);
+                    } else {
+                        sched_sleep_ticks(1u);
+                    }
+                    sched_block_until_runnable();
                 }
                 break;
             }
@@ -603,64 +733,85 @@ uint32_t syscall_dispatch(const syscall_regs_t *regs) {
                 break;
             }
 
-            for (i = 0u; i < nfds; i++) {
-                syscall_pollfd32_t pfd;
-                uint16_t revents = 0u;
-                uint32_t off = fds_addr + i * (uint32_t)sizeof(syscall_pollfd32_t);
+            for (;;) {
+                uint32_t ready = 0u;
+                uint32_t wait_read_stdin = 0u;
+                uint32_t remaining_ticks = 0u;
 
-                if (!abi_user_read_bytes(off, (uint8_t *)&pfd, (uint32_t)sizeof(pfd))) {
-                    err = ERRNO_EFAULT;
-                    ret = (uint32_t)-1;
+                for (i = 0u; i < nfds; i++) {
+                    syscall_pollfd32_t pfd;
+                    uint16_t revents = 0u;
+                    uint32_t off = fds_addr + i * (uint32_t)sizeof(syscall_pollfd32_t);
+
+                    if (!abi_user_read_bytes(off, (uint8_t *)&pfd, (uint32_t)sizeof(pfd))) {
+                        err = ERRNO_EFAULT;
+                        ret = (uint32_t)-1;
+                        break;
+                    }
+
+                    if (pfd.fd < 0) {
+                        /* POSIX poll: negative fd entries are ignored. */
+                    } else if (!fd_is_valid(pfd.fd)) {
+                        revents |= (uint16_t)SYS_POLLNVAL;
+                    } else {
+                        if ((pfd.events & (int16_t)SYS_POLLIN) != 0 && fd_read_ready(pfd.fd)) {
+                            revents |= (uint16_t)SYS_POLLIN;
+                        }
+                        if ((pfd.events & (int16_t)SYS_POLLOUT) != 0 && fd_write_ready(pfd.fd)) {
+                            revents |= (uint16_t)SYS_POLLOUT;
+                        }
+                        if (sched_fd_is_stdin(pfd.fd) && (pfd.events & (int16_t)SYS_POLLIN) != 0 &&
+                            !fd_read_ready(pfd.fd)) {
+                            wait_read_stdin = 1u;
+                        }
+                    }
+
+                    pfd.revents = (int16_t)revents;
+                    if (!abi_user_write_bytes(off, (const uint8_t *)&pfd, (uint32_t)sizeof(pfd))) {
+                        err = ERRNO_EFAULT;
+                        ret = (uint32_t)-1;
+                        break;
+                    }
+                    if (revents != 0u) {
+                        ready++;
+                    }
+                }
+                if (err != ERRNO_OK) {
                     break;
                 }
-
-                if (!fd_is_valid(pfd.fd)) {
-                    revents |= (uint16_t)SYS_POLLNVAL;
-                } else {
-                    if ((pfd.events & (int16_t)SYS_POLLIN) != 0 && fd_can_read(pfd.fd)) {
-                        revents |= (uint16_t)SYS_POLLIN;
-                    }
-                    if ((pfd.events & (int16_t)SYS_POLLOUT) != 0 && fd_can_write(pfd.fd)) {
-                        revents |= (uint16_t)SYS_POLLOUT;
-                    }
-                    if (pfd.fd == 0 && (pfd.events & (int16_t)SYS_POLLIN) != 0) {
-                        wait_read_stdin = 1u;
-                    }
-                }
-
-                pfd.revents = (int16_t)revents;
-                if (!abi_user_write_bytes(off, (const uint8_t *)&pfd, (uint32_t)sizeof(pfd))) {
-                    err = ERRNO_EFAULT;
-                    ret = (uint32_t)-1;
+                if (ready != 0u) {
+                    ret = ready;
                     break;
                 }
-                if (revents != 0u) {
-                    ready++;
-                }
-            }
-            if (err != ERRNO_OK) {
-                break;
-            }
-            if (ready != 0u || timeout_ms == 0) {
-                ret = ready;
-                break;
-            }
-
-            if (wait_read_stdin) {
-                if (console_wait_readable(timeout_ticks, 0u) == CONSOLE_IO_BLOCKED) {
-                    err = ERRNO_EAGAIN;
-                    ret = (uint32_t)-1;
-                } else {
+                if (timeout_ms == 0) {
                     ret = 0u;
+                    break;
                 }
-            } else {
+
+                if (timeout_ms > 0) {
+                    uint32_t elapsed = sched_ticks() - start_tick;
+                    if (elapsed >= timeout_ticks) {
+                        ret = 0u;
+                        break;
+                    }
+                    remaining_ticks = timeout_ticks - elapsed;
+                }
+
+                if (wait_read_stdin) {
+                    uint32_t wait_ticks = (timeout_ms > 0) ? remaining_ticks : 0u;
+                    if (console_wait_readable(wait_ticks, 0u) == CONSOLE_IO_BLOCKED) {
+                        sched_block_until_runnable();
+                    }
+                    continue;
+                }
+
                 if (timeout_ms < 0) {
                     sched_sleep_ticks(1u);
                 } else {
-                    sched_sleep_ticks(timeout_ticks ? timeout_ticks : 1u);
+                    sched_sleep_ticks(remaining_ticks ? remaining_ticks : 1u);
                 }
-                err = ERRNO_EAGAIN;
-                ret = (uint32_t)-1;
+                sched_block_until_runnable();
+                continue;
             }
             break;
         }
@@ -671,15 +822,11 @@ uint32_t syscall_dispatch(const syscall_regs_t *regs) {
             uint32_t except_addr = regs->arg3;
             int32_t timeout_ms = (int32_t)regs->arg4;
             uint32_t timeout_ticks = timeout_ms_to_ticks(timeout_ms);
+            uint32_t start_tick = sched_ticks();
             uint32_t in_read = 0u;
             uint32_t in_write = 0u;
             uint32_t in_except = 0u;
-            uint32_t out_read = 0u;
-            uint32_t out_write = 0u;
-            uint32_t out_except = 0u;
-            uint32_t wait_read_stdin = 0u;
             uint32_t i;
-            uint32_t ready;
 
             if (nfds > 32u) {
                 err = ERRNO_EINVAL;
@@ -711,77 +858,98 @@ uint32_t syscall_dispatch(const syscall_regs_t *regs) {
                 in_except = *(volatile uint32_t *)(uintptr_t)except_addr;
             }
 
-            for (i = 0u; i < nfds; i++) {
-                uint32_t bit = 1u << i;
-                int32_t fd = (int32_t)i;
-                uint32_t watched = (in_read & bit) | (in_write & bit) | (in_except & bit);
-                if (watched == 0u) {
-                    continue;
+            for (;;) {
+                uint32_t out_read = 0u;
+                uint32_t out_write = 0u;
+                uint32_t out_except = 0u;
+                uint32_t wait_read_stdin = 0u;
+                uint32_t ready;
+                uint32_t remaining_ticks = 0u;
+
+                for (i = 0u; i < nfds; i++) {
+                    uint32_t bit = 1u << i;
+                    int32_t fd = (int32_t)i;
+                    uint32_t watched = (in_read & bit) | (in_write & bit) | (in_except & bit);
+                    if (watched == 0u) {
+                        continue;
+                    }
+                    if (!fd_is_valid(fd)) {
+                        err = ERRNO_EBADF;
+                        ret = (uint32_t)-1;
+                        break;
+                    }
+                    if ((in_read & bit) != 0u) {
+                        if (fd_read_ready(fd)) {
+                            out_read |= bit;
+                        }
+                        if (sched_fd_is_stdin(fd) && !fd_read_ready(fd)) {
+                            wait_read_stdin = 1u;
+                        }
+                    }
+                    if ((in_write & bit) != 0u && fd_write_ready(fd)) {
+                        out_write |= bit;
+                    }
                 }
-                if (!fd_is_valid(fd)) {
-                    err = ERRNO_EBADF;
+                if (err != ERRNO_OK) {
+                    break;
+                }
+
+                if (read_addr != 0u && !abi_user_write32(read_addr, out_read)) {
+                    err = ERRNO_EFAULT;
                     ret = (uint32_t)-1;
                     break;
                 }
-                if ((in_read & bit) != 0u) {
-                    if (fd_can_read(fd)) {
-                        out_read |= bit;
-                    }
-                    if (fd == 0) {
-                        wait_read_stdin = 1u;
-                    }
-                }
-                if ((in_write & bit) != 0u && fd_can_write(fd)) {
-                    out_write |= bit;
-                }
-            }
-            if (err != ERRNO_OK) {
-                break;
-            }
-
-            if (read_addr != 0u && !abi_user_write32(read_addr, out_read)) {
-                err = ERRNO_EFAULT;
-                ret = (uint32_t)-1;
-                break;
-            }
-            if (write_addr != 0u && !abi_user_write32(write_addr, out_write)) {
-                err = ERRNO_EFAULT;
-                ret = (uint32_t)-1;
-                break;
-            }
-            if (except_addr != 0u && !abi_user_write32(except_addr, out_except)) {
-                err = ERRNO_EFAULT;
-                ret = (uint32_t)-1;
-                break;
-            }
-
-            ready = count_bits_u32(out_read) + count_bits_u32(out_write) + count_bits_u32(out_except);
-            if (ready != 0u || timeout_ms == 0) {
-                ret = ready;
-                break;
-            }
-
-            if (wait_read_stdin) {
-                if (console_wait_readable(timeout_ticks, 0u) == CONSOLE_IO_BLOCKED) {
-                    err = ERRNO_EAGAIN;
+                if (write_addr != 0u && !abi_user_write32(write_addr, out_write)) {
+                    err = ERRNO_EFAULT;
                     ret = (uint32_t)-1;
-                } else {
-                    ret = 0u;
+                    break;
                 }
-            } else {
+                if (except_addr != 0u && !abi_user_write32(except_addr, out_except)) {
+                    err = ERRNO_EFAULT;
+                    ret = (uint32_t)-1;
+                    break;
+                }
+
+                ready = count_bits_u32(out_read) + count_bits_u32(out_write) + count_bits_u32(out_except);
+                if (ready != 0u) {
+                    ret = ready;
+                    break;
+                }
+                if (timeout_ms == 0) {
+                    ret = 0u;
+                    break;
+                }
+
+                if (timeout_ms > 0) {
+                    uint32_t elapsed = sched_ticks() - start_tick;
+                    if (elapsed >= timeout_ticks) {
+                        ret = 0u;
+                        break;
+                    }
+                    remaining_ticks = timeout_ticks - elapsed;
+                }
+
+                if (wait_read_stdin) {
+                    uint32_t wait_ticks = (timeout_ms > 0) ? remaining_ticks : 0u;
+                    if (console_wait_readable(wait_ticks, 0u) == CONSOLE_IO_BLOCKED) {
+                        sched_block_until_runnable();
+                    }
+                    continue;
+                }
+
                 if (timeout_ms < 0) {
                     sched_sleep_ticks(1u);
                 } else {
-                    sched_sleep_ticks(timeout_ticks ? timeout_ticks : 1u);
+                    sched_sleep_ticks(remaining_ticks ? remaining_ticks : 1u);
                 }
-                err = ERRNO_EAGAIN;
-                ret = (uint32_t)-1;
+                sched_block_until_runnable();
+                continue;
             }
             break;
         }
         case SYS_TTY_GETMODE: {
-            uint32_t fd = regs->arg0;
-            if (fd > 2u) {
+            int32_t fd = (int32_t)regs->arg0;
+            if (!sched_fd_is_tty(fd)) {
                 err = ERRNO_EBADF;
                 ret = (uint32_t)-1;
                 break;
@@ -790,9 +958,9 @@ uint32_t syscall_dispatch(const syscall_regs_t *regs) {
             break;
         }
         case SYS_TTY_SETMODE: {
-            uint32_t fd = regs->arg0;
+            int32_t fd = (int32_t)regs->arg0;
             uint32_t lflag = regs->arg1;
-            if (fd > 2u) {
+            if (!sched_fd_is_tty(fd)) {
                 err = ERRNO_EBADF;
                 ret = (uint32_t)-1;
                 break;
@@ -924,24 +1092,6 @@ uint32_t syscall_dispatch(const syscall_regs_t *regs) {
             break;
     }
 
-    syscall_publish_result(regs, ret, err);
+    SYSCALL_PUBLISH_RESULT(regs, ret, err);
     return ret;
-}
-
-void syscall_dispatch_from_irq_regs(uint32_t r0,
-                                    uint32_t r1,
-                                    uint32_t r2,
-                                    uint32_t r3,
-                                    uint32_t r4,
-                                    uint32_t r5,
-                                    uint32_t r6) {
-    syscall_regs_t regs;
-    regs.nr = r0;
-    regs.arg0 = r1;
-    regs.arg1 = r2;
-    regs.arg2 = r3;
-    regs.arg3 = r4;
-    regs.arg4 = r5;
-    regs.arg5 = r6;
-    (void)syscall_dispatch(&regs);
 }
