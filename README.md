@@ -154,6 +154,7 @@ See:
 - `isa.md`
 - `bios.md`
 - `kernel.md`
+- `docs/posix.md`
 - `bios-build.md`
 
 ## Kernel Developing

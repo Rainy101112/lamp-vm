@@ -23,7 +23,15 @@ enum {
     SYS_CLOSE = 16u,
     SYS_DUP = 17u,
     SYS_DUP2 = 18u,
-    SYS_FCNTL = 19u
+    SYS_FCNTL = 19u,
+    SYS_OPEN = 20u,
+    SYS_SOCKET = 21u,
+    SYS_CONNECT = 22u,
+    SYS_BIND = 23u,
+    SYS_LISTEN = 24u,
+    SYS_ACCEPT = 25u,
+    SYS_SEND = 26u,
+    SYS_RECV = 27u
 };
 
 enum {
@@ -56,6 +64,8 @@ enum {
     SYS_O_RDONLY = 0x00000000u,
     SYS_O_WRONLY = 0x00000001u,
     SYS_O_RDWR = 0x00000002u,
+    SYS_O_CREAT = 0x00000040u,
+    SYS_O_TRUNC = 0x00000200u,
     SYS_O_NONBLOCK = 0x00000800u
 };
 

@@ -48,6 +48,24 @@ enum {
     SCHED_FD_EINVAL = -3
 };
 
+enum {
+    SCHED_FD_TYPE_NONE = 0u,
+    SCHED_FD_TYPE_STDIN = 1u,
+    SCHED_FD_TYPE_STDOUT = 2u,
+    SCHED_FD_TYPE_STDERR = 3u,
+    SCHED_FD_TYPE_DEV_NULL = 4u,
+    SCHED_FD_TYPE_DEV_ZERO = 5u,
+    SCHED_FD_TYPE_DEV_TTY = 6u,
+    SCHED_FD_TYPE_SOCKET = 7u
+};
+
+enum {
+    SCHED_FD_SPECIAL_DEV_NULL = 1u,
+    SCHED_FD_SPECIAL_DEV_ZERO = 2u,
+    SCHED_FD_SPECIAL_DEV_TTY = 3u,
+    SCHED_FD_SPECIAL_SOCKET = 4u
+};
+
 struct sched_task {
     uint32_t tid;
     uint32_t state;
@@ -83,6 +101,8 @@ uint32_t sched_fd_is_nonblock(int32_t fd);
 uint32_t sched_fd_is_open(int32_t fd);
 uint32_t sched_fd_is_stdin(int32_t fd);
 uint32_t sched_fd_is_tty(int32_t fd);
+int sched_fd_open_special(uint32_t special_type, uint32_t status_flags);
+int sched_fd_get_type(int32_t fd, uint32_t *out_type);
 
 void sched_waitq_init(sched_waitq_t *q);
 void sched_waitq_sleep(sched_waitq_t *q, uint32_t timeout_ticks);

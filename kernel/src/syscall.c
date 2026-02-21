@@ -24,14 +24,22 @@ enum {
 };
 
 enum {
+    ERRNO_ENOENT = 2u,
     ERRNO_OK = 0u,
     ERRNO_EINTR = 4u,
     ERRNO_EBADF = 9u,
     ERRNO_ECHILD = 10u,
     ERRNO_EAGAIN = 11u,
+    ERRNO_ENOMEM = 12u,
     ERRNO_EFAULT = 14u,
+    ERRNO_EBUSY = 16u,
     ERRNO_EMFILE = 24u,
+    ERRNO_ENOSPC = 28u,
     ERRNO_EINVAL = 22u,
+    ERRNO_ENOTSOCK = 88u,
+    ERRNO_EOPNOTSUPP = 95u,
+    ERRNO_EAFNOSUPPORT = 97u,
+    ERRNO_ENOTCONN = 107u,
     ERRNO_ENOSYS = 38u,
     ERRNO_EOVERFLOW = 75u
 };
@@ -56,13 +64,18 @@ enum {
     NS_PER_SEC = 1000000000u,
     US_PER_SEC = 1000000u,
     NS_PER_US = 1000u,
+    FS_PATH_CAP = 64u,
     CLOCK_RESOLUTION_NS = 1u,
     TIME_MMIO_REALTIME_LO = TIMER_MMIO_BASE + 0x04u,
     TIME_MMIO_REALTIME_HI = TIMER_MMIO_BASE + 0x08u,
     TIME_MMIO_MONOTONIC_LO = TIMER_MMIO_BASE + 0x0Cu,
     TIME_MMIO_MONOTONIC_HI = TIMER_MMIO_BASE + 0x10u,
     TIME_MMIO_BOOT_LO = TIMER_MMIO_BASE + 0x14u,
-    TIME_MMIO_BOOT_HI = TIMER_MMIO_BASE + 0x18u
+    TIME_MMIO_BOOT_HI = TIMER_MMIO_BASE + 0x18u,
+    SOCK_AF_UNIX = 1u,
+    SOCK_AF_INET = 2u,
+    SOCK_AF_INET6 = 10u,
+    SOCK_NONBLOCK = 0x00000800u
 };
 
 static uint32_t g_realtime_offset_neg;
@@ -116,6 +129,25 @@ static inline uint32_t abi_user_read_bytes(uint32_t addr, uint8_t *dst, uint32_t
         dst[i] = *(volatile uint8_t *)(uintptr_t)(addr + i);
     }
     return 1u;
+}
+
+static inline uint32_t abi_user_read_cstr(uint32_t addr, char *dst, uint32_t cap) {
+    uint32_t i;
+    if (!dst || cap == 0u || addr == 0u) {
+        return 0u;
+    }
+    for (i = 0u; i + 1u < cap; i++) {
+        uint8_t c;
+        if (!abi_ptr_range_ok(addr + i, 1u)) {
+            return 0u;
+        }
+        c = *(volatile uint8_t *)(uintptr_t)(addr + i);
+        dst[i] = (char)c;
+        if (c == 0u) {
+            return 1u;
+        }
+    }
+    return 0u;
 }
 
 static inline uint32_t abi_user_read_timespec(uint32_t addr, syscall_timespec32_t *out) {
@@ -177,6 +209,14 @@ static inline uint32_t fd_is_valid(int32_t fd) {
     return sched_fd_is_open(fd);
 }
 
+static inline uint32_t fd_type(int32_t fd) {
+    uint32_t t = SCHED_FD_TYPE_NONE;
+    if (sched_fd_get_type(fd, &t) != SCHED_FD_OK) {
+        return SCHED_FD_TYPE_NONE;
+    }
+    return t;
+}
+
 static inline uint32_t fd_supports_read(int32_t fd) {
     return sched_fd_can_read(fd);
 }
@@ -189,18 +229,67 @@ static inline uint32_t fd_is_nonblock(int32_t fd) {
     return sched_fd_is_nonblock(fd);
 }
 
+static inline uint32_t fd_waits_console_read(int32_t fd) {
+    uint32_t t = fd_type(fd);
+    return (t == SCHED_FD_TYPE_STDIN || t == SCHED_FD_TYPE_DEV_TTY) ? 1u : 0u;
+}
+
+static inline uint32_t str_eq(const char *a, const char *b) {
+    uint32_t i = 0u;
+    if (!a || !b) {
+        return 0u;
+    }
+    while (a[i] != '\0' && b[i] != '\0') {
+        if (a[i] != b[i]) {
+            return 0u;
+        }
+        i++;
+    }
+    return (a[i] == '\0' && b[i] == '\0') ? 1u : 0u;
+}
+
+static inline uint32_t open_path_to_special(const char *path, uint32_t *out_special) {
+    if (!path || !out_special) {
+        return 0u;
+    }
+    if (str_eq(path, "/dev/null")) {
+        *out_special = SCHED_FD_SPECIAL_DEV_NULL;
+        return 1u;
+    }
+    if (str_eq(path, "/dev/zero")) {
+        *out_special = SCHED_FD_SPECIAL_DEV_ZERO;
+        return 1u;
+    }
+    if (str_eq(path, "/dev/tty")) {
+        *out_special = SCHED_FD_SPECIAL_DEV_TTY;
+        return 1u;
+    }
+    return 0u;
+}
+
 static inline uint32_t fd_read_ready(int32_t fd) {
+    uint32_t t = fd_type(fd);
     if (!fd_supports_read(fd)) {
         return 0u;
     }
-    if (sched_fd_is_stdin(fd)) {
+    if (t == SCHED_FD_TYPE_STDIN || t == SCHED_FD_TYPE_DEV_TTY) {
         return console_can_read();
+    }
+    if (t == SCHED_FD_TYPE_DEV_NULL || t == SCHED_FD_TYPE_DEV_ZERO) {
+        return 1u;
     }
     return 0u;
 }
 
 static inline uint32_t fd_write_ready(int32_t fd) {
-    return fd_supports_write(fd);
+    uint32_t t = fd_type(fd);
+    if (!fd_supports_write(fd)) {
+        return 0u;
+    }
+    if (t == SCHED_FD_TYPE_SOCKET) {
+        return 0u;
+    }
+    return 1u;
 }
 
 static uint32_t errno_from_sched_fd_rc(int rc) {
@@ -512,6 +601,8 @@ uint32_t syscall_dispatch(const syscall_regs_t *regs) {
             uint8_t byte_buf[64];
             uint32_t copied = 0u;
             uint32_t nonblock = fd_is_nonblock(fd) | ((flags & SYS_IO_NONBLOCK) ? 1u : 0u);
+            uint32_t t = fd_type(fd);
+            uint32_t i;
 
             if (!fd_supports_read(fd)) {
                 err = ERRNO_EBADF;
@@ -524,6 +615,35 @@ uint32_t syscall_dispatch(const syscall_regs_t *regs) {
             }
             if (buf_addr == 0u || !abi_ptr_range_ok(buf_addr, len)) {
                 err = ERRNO_EFAULT;
+                ret = (uint32_t)-1;
+                break;
+            }
+
+            if (t == SCHED_FD_TYPE_DEV_NULL) {
+                ret = 0u;
+                break;
+            }
+            if (t == SCHED_FD_TYPE_DEV_ZERO) {
+                while (copied < len) {
+                    uint32_t remain = len - copied;
+                    uint32_t want = (remain > (uint32_t)sizeof(byte_buf)) ? (uint32_t)sizeof(byte_buf) : remain;
+                    for (i = 0u; i < want; i++) {
+                        byte_buf[i] = 0u;
+                    }
+                    if (!abi_user_write_bytes(buf_addr + copied, byte_buf, want)) {
+                        err = ERRNO_EFAULT;
+                        ret = (uint32_t)-1;
+                        break;
+                    }
+                    copied += want;
+                }
+                if (err == ERRNO_OK) {
+                    ret = copied;
+                }
+                break;
+            }
+            if (t == SCHED_FD_TYPE_SOCKET) {
+                err = ERRNO_ENOTCONN;
                 ret = (uint32_t)-1;
                 break;
             }
@@ -575,6 +695,7 @@ uint32_t syscall_dispatch(const syscall_regs_t *regs) {
             uint32_t len = regs->arg2;
             uint8_t byte_buf[128];
             uint32_t total = 0u;
+            uint32_t t = fd_type(fd);
 
             if (!fd_supports_write(fd)) {
                 err = ERRNO_EBADF;
@@ -587,6 +708,16 @@ uint32_t syscall_dispatch(const syscall_regs_t *regs) {
             }
             if (buf_addr == 0u || !abi_ptr_range_ok(buf_addr, len)) {
                 err = ERRNO_EFAULT;
+                ret = (uint32_t)-1;
+                break;
+            }
+
+            if (t == SCHED_FD_TYPE_DEV_NULL || t == SCHED_FD_TYPE_DEV_ZERO) {
+                ret = len;
+                break;
+            }
+            if (t == SCHED_FD_TYPE_SOCKET) {
+                err = ERRNO_ENOTCONN;
                 ret = (uint32_t)-1;
                 break;
             }
@@ -693,6 +824,102 @@ uint32_t syscall_dispatch(const syscall_regs_t *regs) {
             }
             break;
         }
+        case SYS_OPEN: {
+            uint32_t path_addr = regs->arg0;
+            uint32_t flags = regs->arg1;
+            uint32_t accmode = flags & SYS_O_ACCMODE;
+            uint32_t status_flags;
+            uint32_t special_type = 0u;
+            int rc;
+            char path[FS_PATH_CAP];
+
+            if ((flags & ~(SYS_O_ACCMODE | SYS_O_NONBLOCK | SYS_O_CREAT | SYS_O_TRUNC)) != 0u) {
+                err = ERRNO_EINVAL;
+                ret = (uint32_t)-1;
+                break;
+            }
+            if (!(accmode == SYS_O_RDONLY || accmode == SYS_O_WRONLY || accmode == SYS_O_RDWR)) {
+                err = ERRNO_EINVAL;
+                ret = (uint32_t)-1;
+                break;
+            }
+            if (!abi_user_read_cstr(path_addr, path, (uint32_t)sizeof(path))) {
+                err = ERRNO_EFAULT;
+                ret = (uint32_t)-1;
+                break;
+            }
+            if (!open_path_to_special(path, &special_type)) {
+                err = ERRNO_ENOENT;
+                ret = (uint32_t)-1;
+                break;
+            }
+
+            status_flags = flags & (SYS_O_ACCMODE | SYS_O_NONBLOCK);
+            rc = sched_fd_open_special(special_type, status_flags);
+            if (rc < 0) {
+                err = errno_from_sched_fd_rc(rc);
+                ret = (uint32_t)-1;
+                break;
+            }
+            ret = (uint32_t)rc;
+            break;
+        }
+        case SYS_SOCKET: {
+            uint32_t domain = regs->arg0;
+            uint32_t type = regs->arg1;
+            uint32_t status_flags = SCHED_FD_O_RDWR;
+            uint32_t sock_kind = type & 0x0Fu;
+            int rc;
+
+            (void)regs->arg2; /* protocol: currently ignored in kernel stub */
+            if (!(domain == SOCK_AF_UNIX || domain == SOCK_AF_INET || domain == SOCK_AF_INET6)) {
+                err = ERRNO_EAFNOSUPPORT;
+                ret = (uint32_t)-1;
+                break;
+            }
+            if (sock_kind == 0u) {
+                err = ERRNO_EINVAL;
+                ret = (uint32_t)-1;
+                break;
+            }
+            if ((type & SOCK_NONBLOCK) != 0u) {
+                status_flags |= SCHED_FD_O_NONBLOCK;
+            }
+            rc = sched_fd_open_special(SCHED_FD_SPECIAL_SOCKET, status_flags);
+            if (rc < 0) {
+                err = errno_from_sched_fd_rc(rc);
+                ret = (uint32_t)-1;
+                break;
+            }
+            ret = (uint32_t)rc;
+            break;
+        }
+        case SYS_CONNECT:
+        case SYS_BIND:
+        case SYS_LISTEN:
+        case SYS_ACCEPT:
+        case SYS_SEND:
+        case SYS_RECV: {
+            int32_t fd = (int32_t)regs->arg0;
+            if (!fd_is_valid(fd)) {
+                err = ERRNO_EBADF;
+                ret = (uint32_t)-1;
+                break;
+            }
+            if (fd_type(fd) != SCHED_FD_TYPE_SOCKET) {
+                err = ERRNO_ENOTSOCK;
+                ret = (uint32_t)-1;
+                break;
+            }
+
+            if (regs->nr == SYS_SEND || regs->nr == SYS_RECV) {
+                err = ERRNO_ENOTCONN;
+            } else {
+                err = ERRNO_EOPNOTSUPP;
+            }
+            ret = (uint32_t)-1;
+            break;
+        }
         case SYS_POLL: {
             uint32_t fds_addr = regs->arg0;
             uint32_t nfds = regs->arg1;
@@ -760,7 +987,7 @@ uint32_t syscall_dispatch(const syscall_regs_t *regs) {
                         if ((pfd.events & (int16_t)SYS_POLLOUT) != 0 && fd_write_ready(pfd.fd)) {
                             revents |= (uint16_t)SYS_POLLOUT;
                         }
-                        if (sched_fd_is_stdin(pfd.fd) && (pfd.events & (int16_t)SYS_POLLIN) != 0 &&
+                        if (fd_waits_console_read(pfd.fd) && (pfd.events & (int16_t)SYS_POLLIN) != 0 &&
                             !fd_read_ready(pfd.fd)) {
                             wait_read_stdin = 1u;
                         }
@@ -882,7 +1109,7 @@ uint32_t syscall_dispatch(const syscall_regs_t *regs) {
                         if (fd_read_ready(fd)) {
                             out_read |= bit;
                         }
-                        if (sched_fd_is_stdin(fd) && !fd_read_ready(fd)) {
+                        if (fd_waits_console_read(fd) && !fd_read_ready(fd)) {
                             wait_read_stdin = 1u;
                         }
                     }

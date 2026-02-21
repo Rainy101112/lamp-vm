@@ -18,10 +18,14 @@ typedef struct sched_fdent {
 } sched_fdent_t;
 
 enum {
-    SCHED_OFILE_TYPE_NONE = 0u,
-    SCHED_OFILE_TYPE_STDIN = 1u,
-    SCHED_OFILE_TYPE_STDOUT = 2u,
-    SCHED_OFILE_TYPE_STDERR = 3u
+    SCHED_OFILE_TYPE_NONE = SCHED_FD_TYPE_NONE,
+    SCHED_OFILE_TYPE_STDIN = SCHED_FD_TYPE_STDIN,
+    SCHED_OFILE_TYPE_STDOUT = SCHED_FD_TYPE_STDOUT,
+    SCHED_OFILE_TYPE_STDERR = SCHED_FD_TYPE_STDERR,
+    SCHED_OFILE_TYPE_DEV_NULL = SCHED_FD_TYPE_DEV_NULL,
+    SCHED_OFILE_TYPE_DEV_ZERO = SCHED_FD_TYPE_DEV_ZERO,
+    SCHED_OFILE_TYPE_DEV_TTY = SCHED_FD_TYPE_DEV_TTY,
+    SCHED_OFILE_TYPE_SOCKET = SCHED_FD_TYPE_SOCKET
 };
 
 #define SCHED_FD_OFILE_INVALID ((uint32_t)~0u)
@@ -59,6 +63,7 @@ static void sched_fd_table_clear(sched_task_slot_t *slot);
 static void sched_fd_table_init_stdio(sched_task_slot_t *slot);
 static int sched_slot_close_fd(sched_task_slot_t *slot, int32_t fd);
 static void sched_slot_close_all_fds(sched_task_slot_t *slot);
+static int sched_slot_find_free_ofile(const sched_task_slot_t *slot);
 
 static inline uint32_t sched_tick_now(void) {
     return (uint32_t)g_ticks;
@@ -234,6 +239,19 @@ static int sched_slot_find_free_fd(const sched_task_slot_t *slot, uint32_t start
     }
     for (i = start; i < SCHED_MAX_FDS; i++) {
         if (!slot->fdtab[i].used) {
+            return (int)i;
+        }
+    }
+    return -1;
+}
+
+static int sched_slot_find_free_ofile(const sched_task_slot_t *slot) {
+    uint32_t i;
+    if (!slot) {
+        return -1;
+    }
+    for (i = 0u; i < SCHED_MAX_FDS; i++) {
+        if (!slot->ofiles[i].used) {
             return (int)i;
         }
     }
@@ -690,18 +708,37 @@ int sched_fd_fcntl_setfl(int32_t fd, uint32_t flags) {
 
 uint32_t sched_fd_can_read(int32_t fd) {
     sched_ofile_t *of = sched_slot_ofile_by_fd(sched_current_slot(), fd, 0);
+    uint32_t acc;
     if (!of) {
         return 0u;
     }
-    return (of->type == SCHED_OFILE_TYPE_STDIN) ? 1u : 0u;
+    acc = of->status_flags & SCHED_FD_O_ACCMODE;
+    if (!(acc == SCHED_FD_O_RDONLY || acc == SCHED_FD_O_RDWR)) {
+        return 0u;
+    }
+    return (of->type == SCHED_OFILE_TYPE_STDIN ||
+            of->type == SCHED_OFILE_TYPE_DEV_ZERO ||
+            of->type == SCHED_OFILE_TYPE_DEV_NULL ||
+            of->type == SCHED_OFILE_TYPE_DEV_TTY ||
+            of->type == SCHED_OFILE_TYPE_SOCKET) ? 1u : 0u;
 }
 
 uint32_t sched_fd_can_write(int32_t fd) {
     sched_ofile_t *of = sched_slot_ofile_by_fd(sched_current_slot(), fd, 0);
+    uint32_t acc;
     if (!of) {
         return 0u;
     }
-    return (of->type == SCHED_OFILE_TYPE_STDOUT || of->type == SCHED_OFILE_TYPE_STDERR) ? 1u : 0u;
+    acc = of->status_flags & SCHED_FD_O_ACCMODE;
+    if (!(acc == SCHED_FD_O_WRONLY || acc == SCHED_FD_O_RDWR)) {
+        return 0u;
+    }
+    return (of->type == SCHED_OFILE_TYPE_STDOUT ||
+            of->type == SCHED_OFILE_TYPE_STDERR ||
+            of->type == SCHED_OFILE_TYPE_DEV_NULL ||
+            of->type == SCHED_OFILE_TYPE_DEV_ZERO ||
+            of->type == SCHED_OFILE_TYPE_DEV_TTY ||
+            of->type == SCHED_OFILE_TYPE_SOCKET) ? 1u : 0u;
 }
 
 uint32_t sched_fd_is_nonblock(int32_t fd) {
@@ -735,7 +772,68 @@ uint32_t sched_fd_is_tty(int32_t fd) {
     }
     return (of->type == SCHED_OFILE_TYPE_STDIN ||
             of->type == SCHED_OFILE_TYPE_STDOUT ||
-            of->type == SCHED_OFILE_TYPE_STDERR) ? 1u : 0u;
+            of->type == SCHED_OFILE_TYPE_STDERR ||
+            of->type == SCHED_OFILE_TYPE_DEV_TTY) ? 1u : 0u;
+}
+
+int sched_fd_open_special(uint32_t special_type, uint32_t status_flags) {
+    int fd_idx;
+    int of_idx;
+    uint32_t type;
+    sched_task_slot_t *slot = sched_current_slot();
+    if (!slot) {
+        return SCHED_FD_EBADF;
+    }
+
+    switch (special_type) {
+        case SCHED_FD_SPECIAL_DEV_NULL:
+            type = SCHED_OFILE_TYPE_DEV_NULL;
+            break;
+        case SCHED_FD_SPECIAL_DEV_ZERO:
+            type = SCHED_OFILE_TYPE_DEV_ZERO;
+            break;
+        case SCHED_FD_SPECIAL_DEV_TTY:
+            type = SCHED_OFILE_TYPE_DEV_TTY;
+            break;
+        case SCHED_FD_SPECIAL_SOCKET:
+            type = SCHED_OFILE_TYPE_SOCKET;
+            break;
+        default:
+            return SCHED_FD_EINVAL;
+    }
+
+    fd_idx = sched_slot_find_free_fd(slot, 0u);
+    if (fd_idx < 0) {
+        return SCHED_FD_EMFILE;
+    }
+    of_idx = sched_slot_find_free_ofile(slot);
+    if (of_idx < 0) {
+        return SCHED_FD_EMFILE;
+    }
+
+    slot->ofiles[(uint32_t)of_idx].used = 1u;
+    slot->ofiles[(uint32_t)of_idx].refs = 1u;
+    slot->ofiles[(uint32_t)of_idx].type = type;
+    slot->ofiles[(uint32_t)of_idx].status_flags =
+        (status_flags & (SCHED_FD_O_ACCMODE | SCHED_FD_O_NONBLOCK));
+
+    slot->fdtab[(uint32_t)fd_idx].used = 1u;
+    slot->fdtab[(uint32_t)fd_idx].ofile_idx = (uint32_t)of_idx;
+    slot->fdtab[(uint32_t)fd_idx].fd_flags = 0u;
+    return fd_idx;
+}
+
+int sched_fd_get_type(int32_t fd, uint32_t *out_type) {
+    sched_ofile_t *of;
+    if (!out_type) {
+        return SCHED_FD_EINVAL;
+    }
+    of = sched_slot_ofile_by_fd(sched_current_slot(), fd, 0);
+    if (!of) {
+        return SCHED_FD_EBADF;
+    }
+    *out_type = of->type;
+    return SCHED_FD_OK;
 }
 
 void sched_pump_once(void) {

@@ -4,6 +4,8 @@
 
 This document describes the current kernel scaffold and bring-up flow, aligned with `bios.md`.
 
+POSIX-facing syscall/fd/tty semantics are documented in `docs/posix.md`.
+
 ## Goal
 
 Establish a stable bring-up baseline before implementing policy:
@@ -65,7 +67,7 @@ Current notes:
 
 - interrupt vector: `IRQ_SYSCALL = 0x80`
 - input registers at trap entry: `r0=nr`, `r1..r6=arg0..arg5`
-- initial syscalls: `getpid`, `yield`, `sleep_ticks`, `exit`, `waitpid`, `nanosleep`, `read`, `write`, `close`, `dup`, `dup2`, `fcntl`, `poll`, `select`, `tty_getmode`, `tty_setmode`, `clock_getres`, `clock_gettime`, `clock_settime`, `gettimeofday`
+- initial syscalls: `getpid`, `yield`, `sleep_ticks`, `exit`, `waitpid`, `nanosleep`, `read`, `write`, `close`, `dup`, `dup2`, `fcntl`, `open`, `poll`, `select`, `tty_getmode`, `tty_setmode`, `clock_getres`, `clock_gettime`, `clock_settime`, `gettimeofday`, `socket/connect/bind/listen/accept/send/recv`
 - return publishing: fixed mailbox at `SYSCALL_ABI_ADDR (0x002FE000)`
 
 Note:
@@ -103,9 +105,11 @@ Note:
 
 - `poll` ABI: `arg0=pollfd*`, `arg1=nfds`, `arg2=timeout_ms`
 - `select` ABI: `arg0=nfds`, `arg1=read_mask*`, `arg2=write_mask*`, `arg3=except_mask*`, `arg4=timeout_ms`
-- fd model (current): `0=stdin`, `1=stdout`, `2=stderr`
+- fd model (current): stdio + special fds from `open("/dev/null" | "/dev/zero" | "/dev/tty")` and `socket()`
 - `tty_getmode(fd)` and `tty_setmode(fd, lflag)` expose tty local mode bits
 - `close/dup/dup2` and `fcntl(F_GETFD/F_SETFD/F_GETFL/F_SETFL)` are wired to per-task fd tables
+- `open` currently maps `/dev/null`, `/dev/zero`, `/dev/tty` to scheduler special-fd types
+- network syscalls are wired to stable stub errno paths (`EAFNOSUPPORT` / `ENOTSOCK` / `EOPNOTSUPP` / `ENOTCONN`) while transport stack is not implemented yet
 - `fdtest` command in init shell runs fd regression checks (`dup`, `fcntl`, `read/poll/select`)
 - `fdtest` uses `waitpid(child_pid, WNOHANG)` for post-reap `ECHILD` assertion to avoid ambient-child interference
 - `poll` follows POSIX rule for ignored entries: `pollfd.fd < 0` yields `revents=0` and does not count as ready
